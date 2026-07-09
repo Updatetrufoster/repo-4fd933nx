@@ -1,0 +1,754 @@
+# libtersafe.so 日志 / 诊断消息汇总
+# 日志 TAG: "ACE"  (Anti-Cheat Expert); 模块 tag: "MRPCS_ANDROID"
+# 中央日志函数: 0x4e6390 区域 -> __android_log_print(prio, "ACE", "%s", msg)
+# 说明: 下列为该库可输出的日志/错误/诊断字符串。
+#   [A] = .rodata 明文;  [D] = 运行时解密(每串独立 stub XOR)
+
+## MRPCS 模块日志 (明文)
+[A] mrpcs_common_data_not_match!
+[A] mrpcs_data_crc_error
+[A] mrpcs_data_len_error
+[A] mrpcs_data_mode_name_len_error
+[A] mrpcs_download_data_thread_start_failed!
+[A] mrpcs_scan_thread_start_failed!
+[A] mrpcs_send_data_thread_start_failed!
+[A] mrpcs_single_data_not_match!
+
+## 其它明文日志 / 诊断消息
+[A] !cdic:%x
+[A] !cdix:%x
+[A] !cp, timeout:%s
+[A] !force:name:%s
+[A] !skip:0x%08x, bin_patch_cnt:%d
+[A] #T#E#R#S#I#G#END#
+[A] #T#E#R#S#I#G#START#
+[A] %"HEHDW%x
+[A] %dnng2
+[A] %lPaO@<
+[A] %s failed to acquire mutex
+[A] %s failed to broadcast
+[A] %s failed to release mutex
+[A] %s, time cast:%ldms
+[A] %s.tmp
+[A] %s/ano_tmp/mpmc.dat
+[A] %s;crc:%s
+[A] %s;error:%s
+[A] %s;mod nm:%s
+[A] %s;mod_nm:%s
+[A] %s;nm:%s err:%s
+[A] %s;o_sz:%s; bf_sz:%s; pID:%s
+[A] %s;pID:%s;rID:%s
+[A] %s;pointID:%s
+[A] (base != 0) && "DW_EH_PE_datarel is invalid with a base of 0"
+[A] (null)
+[A] .init_array
+[A] /data/data/%s/files
+[A] /data/user/10/%s/files
+[A] ::friend
+[A] <![CDATA[%s]]>
+[A] <cp-ret>response:%d, t:%s
+[A] @T@E@R@S@C@I@END@
+[A] @T@E@R@S@C@I@START@
+[A] Adobe APP14 marker: version %d, flags 0x%04x 0x%04x, transform %d
+[A] Application transferred too few scanlines
+[A] Application transferred too many scanlines
+[A] Assert Error, 0x%x:0x%x
+[A] At marker 0x%02x, recovery action %d
+[A] Bogus DAC index %d
+[A] Bogus DAC value 0x%x
+[A] Bogus DHT index %d
+[A] Bogus DQT index %d
+[A] Bogus Huffman table definition
+[A] Bogus message code %d
+[A] CIE start does not match
+[A] CONNECTOR
+[A] COREREPORT
+[A] Cannot quantize more than %d color components
+[A] Cannot quantize to fewer than %d colors
+[A] Cannot quantize to more than %d colors
+[A] Cannot transcode due to multiple use of quantization table %d
+[A] Closed temporary file %s
+[A] Component %d: %dhx%dv q=%d
+[A] Component %d: dc=%d ac=%d
+[A] Component index %d: mismatching sampling ratio %d:%d, %d:%d, %c
+[A] Corrupt JPEG data: %u extraneous bytes before marker 0x%02x
+[A] Corrupt JPEG data: found marker 0x%02x instead of RST%d
+[A] Corrupt JPEG data: premature end of data segment
+[A] CpuCore:%d;CpuFreq:%d
+[A] DCT scaled block size %dx%d not supported
+[A] DW_EH_PE_datarel is invalid with a datarelBase of 0
+[A] Define Quantization Table %d  precision %d
+[A] Define Restart Interval %u
+[A] Didn't expect more than one scan
+[A] DisplayMetrics:%dX%d
+[A] End Of Image
+[A] Error
+[A] Error document empty.
+[A] Error null (0) or unexpected EOF found in input stream.
+[A] Error parsing CDATA.
+[A] Error parsing Comment.
+[A] Error parsing Declaration.
+[A] Error parsing Element.
+[A] Error parsing Unknown.
+[A] Error reading Attributes.
+[A] Error reading Element value.
+[A] Error reading end tag.
+[A] Error when TiXmlDocument added to document, because TiXmlDocument can only be at the root.
+[A] Error: empty tag.
+[A] Failed to create temporary file %s
+[A] Failed to open file
+[A] Failed to read Element name
+[A] FakeOpenId3
+[A] Freed EMS handle %u
+[A] Freed XMS handle %u
+[A] Improper call to JPEG library in state %d
+[A] Inconsistent progression sequence for component %d coefficient %d
+[A] Input file read error
+[A] Insufficient memory (case %d)
+[A] Invalid JPEG file structure: %s before SOF
+[A] Invalid JPEG file structure: missing SOS marker
+[A] Invalid JPEG file structure: two SOF markers
+[A] Invalid JPEG file structure: two SOI markers
+[A] Invalid SOS parameters for sequential JPEG
+[A] Invalid access!
+[A] Invalid color quantization mode change
+[A] Invalid component ID %d in SOS
+[A] Invalid crop request
+[A] Invalid memory pool code %d
+[A] Invalid progressive parameters Ss=%d Se=%d Ah=%d Al=%d
+[A] Invalid progressive parameters at scan script entry %d
+[A] Invalid scan script at entry %d
+[A] JFIF APP0 marker: version %d.%02d, density %dx%d  %d
+[A] JFIF extension marker: JPEG-compressed thumbnail image, length %u
+[A] JFIF extension marker: RGB thumbnail image, length %u
+[A] JFIF extension marker: palette thumbnail image, length %u
+[A] JFIF extension marker: type 0x%02x, length %u
+[A] JNI_OnLoad
+[A] JPEG parameter struct mismatch: library thinks size is %u, caller expects %u
+[A] Maximum supported image dimension is %u pixels
+[A] Miscellaneous marker 0x%02x, length %u
+[A] N12_GLOBAL__N_116itanium_demangle12InitListExprE
+[A] N12_GLOBAL__N_116itanium_demangle17VendorExtQualTypeE
+[A] N12_GLOBAL__N_116itanium_demangle20MemberLikeFriendNameE
+[A] No error
+[A] Not a JPEG file: starts with 0x%02x 0x%02x
+[A] Obtained EMS handle %u
+[A] Obtained XMS handle %u
+[A] Opened temporary file %s
+[A] Output file write error --- out of disk space?
+[A] Premature end of JPEG file
+[A] Premature end of input file
+[A] Quantizing to %d = %d*%d*%d colors
+[A] Quantizing to %d colors
+[A] REPORT
+[A] RST%d
+[A] Read failed on temporary file
+[A] Read from EMS failed
+[A] Read from XMS failed
+[A] RecordTouchStart:name=pvp_mode
+[A] ReportComplaint
+[A] Sampling factors too large for interleaved scan
+[A] Scan script does not transmit all data
+[A] ScanCast
+[A] Seek failed on temporary file
+[A] Selected %d colors for quantization
+[A] SetDownloadConfig
+[A] SetDownloadConfig:Closed
+[A] St11logic_error
+[A] St12length_error
+[A] Start Of Frame 0x%02x: width=%u, height=%u, components=%d
+[A] Start Of Scan: %d components
+[A] Start of Image
+[A] Too many color components: %d, max %d
+[A] TotalMem:%d;FreeSpaceTDM:%d
+[A] TssJavaMethod_SendCmd
+[A] TssSDKDelReportData
+[A] TssSDKDelReportData3
+[A] TssSDKDelReportData4
+[A] TssSDKGetReportData
+[A] TssSDKGetReportData2
+[A] TssSDKGetReportData3
+[A] TssSDKGetReportData4
+[A] TssSDKInit
+[A] TssSDKInitEx
+[A] TssSDKOnRecvData
+[A] TssSDKOnRecvSignature
+[A] U[REWP%l.%55i'-/3
+[A] U[REWP%l/ k'78:>$>(
+[A] Unknown APP0 marker (not JFIF), length %u
+[A] Unknown APP14 marker (not Adobe), length %u
+[A] Unknown Adobe color transform code %d
+[A] Unrecognized component IDs %d %d %d, assuming YCbCr
+[A] Unsupported JPEG data precision %d
+[A] Unsupported JPEG process: SOF type 0x%02x
+[A] Unsupported color conversion request
+[A] Unsupported marker type 0x%02x
+[A] Warning: thumbnail image size does not match data length %u
+[A] Warning: unknown JFIF revision number %d.%02d
+[A] Write failed on temporary file --- out of disk space?
+[A] Write to EMS failed
+[A] Write to XMS failed
+[A] Wrong JPEG library version: library is %d, caller expects %d
+[A] XYSMU$m!pv*"/()2c=/=1<7'1'%x
+[A] XYSMU$m-!(3 =,9?c=/=1<7'1'%x46=oW^RSF
+[A] [MVM]%s
+[A] _ZN6TssSdk16sdt_report_errorEv
+[A] __cxa_guard_acquire detected recursive initialization: do you have a function-local static variable whose initialization depends on that function?
+[A] __open_2
+[A] __openat_2
+[A] __stack_chk_fail
+[A] a:1,r:%d,cnt:%zd
+[A] add ct:%d
+[A] ano_%d
+[A] apk_path:%s
+[A] apk_path=%s
+[A] cdn:%s
+[A] check_state:%s
+[A] check_state=%s
+[A] chk_err_%d
+[A] close
+[A] closedir
+[A] closelog
+[A] connect
+[A] cp_timeout
+[A] ct_ec failed: %d|%d
+[A] ct_init: 256+dist != 512
+[A] ct_init: dist != 256
+[A] ct_init: length != 256
+[A] ctl:ilc_open_pipe
+[A] debugger
+[A] debugger:%s
+[A] debugger=%s
+[A] dl %s, retval:%d, cache:%d, cs:%d, cs_cache:%d
+[A] dlclose
+[A] dlopen
+[A] download_data_failed
+[A] e,)a%k0rcNV/d){'a#(%UF
+[A] encoding="%s"
+[A] error
+[A] error 0
+[A] error 1
+[A] error 10
+[A] error 11
+[A] error 12
+[A] error 13
+[A] error 14
+[A] error 15
+[A] error 2
+[A] error 3
+[A] error 4
+[A] error 5
+[A] error 6
+[A] error 7
+[A] error 8
+[A] error 9
+[A] fc_thread_statrt_failed!
+[A] fclose
+[A] fdopen
+[A] ferror
+[A] fopen
+[A] func=pri_enc_str|buf=%s
+[A] gH%xhfpdKbByO=[Y/n\
+[A] get2:%d, %p
+[A] get_mode_path_error
+[A] hello getreportdata3
+[A] ilc_close_pipe
+[A] ilc_open_pipe
+[A] ilc_recv_pipe
+[A] init ct
+[A] init_info->game_id_:%d
+[A] init_info->size_:%d
+[A] init_info->tss_sdk_send_data_to_svr:%p
+[A] init_info:%p
+[A] initializer for module
+[A] inline_hook_opcode_dismatch
+[A] inotify_init
+[A] invalid bit length repeat
+[A] invalid block type
+[A] invalid distance code
+[A] invalid length
+[A] invalid literal/length code
+[A] invalid stored block lengths
+[A] invalid window size
+[A] key=%s|allow=%d
+[A] libunwind: %s - %s
+[A] libunwind: malformed DW_CFA_GNU_negative_offset_extended DWARF unwind, reg too big
+[A] libunwind: malformed DW_CFA_offset_extended DWARF unwind, reg too big
+[A] libunwind: malformed DW_CFA_offset_extended_sf DWARF unwind, reg too big
+[A] libunwind: malformed DW_CFA_restore_extended DWARF unwind, reg too big
+[A] libunwind: malformed DW_CFA_val_offset DWARF unwind, reg (%lu) out of range
+[A] libunwind: unsupported .eh_frame_hdr at %lx: need at least 4 bytes of data but only got %zd
+[A] libunwind: unsupported .eh_frame_hdr version: %u at %lx
+[A] ms_data_crc
+[A] ms_data_mode_infe_error
+[A] ms_down_start
+[A] ms_fc_start
+[A] ms_hook_opcode
+[A] ms_open_file
+[A] ms_rule_exe_fail
+[A] ms_scan_start
+[A] ms_send_one_data_size_beyond_buff
+[A] ms_send_start
+[A] ms_set_inlie_hook
+[A] mt2_no_root
+[A] name=%s
+[A] name=%s|default=%s
+[A] name=%s|rate=%.2f|is_root=%d
+[A] nullptr
+[A] opendir
+[A] openlog
+[A] operator name does not start with 'operator'
+[A] path=%s
+[A] pclose
+[A] pid:%d
+[A] plqi,(3-%d8#
+[A] popen
+[A] pthread_attr_destroy
+[A] pthread_attr_init
+[A] pthread_attr_setdetachstate
+[A] pthread_attr_setstacksize
+[A] pthread_cond_broadcast
+[A] pthread_cond_wait
+[A] pthread_create
+[A] pthread_getspecific
+[A] pthread_key_create
+[A] pthread_key_delete
+[A] pthread_mutex_destroy
+[A] pthread_mutex_init
+[A] pthread_mutex_lock
+[A] pthread_mutex_trylock
+[A] pthread_mutex_unlock
+[A] pthread_mutexattr_destroy
+[A] pthread_mutexattr_init
+[A] pthread_mutexattr_settype
+[A] pthread_once
+[A] pthread_rwlock_rdlock
+[A] pthread_rwlock_unlock
+[A] pthread_rwlock_wrlock
+[A] pthread_setspecific
+[A] ptr:%p,i:%d,r:%d,tick:%d,ec:%d,rc:%d
+[A] ptrace
+[A] qos_%d
+[A] rcv_ct_%d:%p|%d
+[A] recvfrom
+[A] recvmsg
+[A] retval=%d
+[A] rule_exe_fail
+[A] s_open_id
+[A] s_open_id:%s
+[A] s_open_id=%s
+[A] sdk_ver=%s
+[A] sem_init
+[A] send_ct_%d:%p|%d|%d
+[A] send_data_push_game_data_failed
+[A] send_data_to_game_data_remain_count
+[A] send_data_to_game_pack_data_too_long
+[A] send_size_beyond_buff
+[A] sendmsg
+[A] sendto
+[A] set_inline_hook_error
+[A] shell_ver:%s
+[A] shell_ver=%s
+[A] signal
+[A] signed char
+[A] sscanf
+[A] standalone="%s"
+[A] status_info->game_status_:%d
+[A] status_info->size_:%d
+[A] std::nullptr_t
+[A] strerror
+[A] tcj_flow:%dM
+[A] tdm_report
+[A] terminating due to %s exception of type %s
+[A] terminating due to %s exception of type %s: %s
+[A] terminating due to %s foreign exception
+[A] test_open_id
+[A] thread-local initialization routine for
+[A] thread-local wrapper routine for
+[A] time_magic:%s
+[A] time_magic=%s
+[A] tme_%s.dat
+[A] tp2_sdk_init
+[A] tp2_sdk_init_ex
+[A] tss_del_report_data
+[A] tss_del_report_data3
+[A] tss_del_report_data4
+[A] tss_enable_get_report_data
+[A] tss_get_report_data
+[A] tss_get_report_data2
+[A] tss_get_report_data3
+[A] tss_get_report_data4
+[A] tss_recv_sec_signature
+[A] tss_sdk_init
+[A] tss_sdk_ischeatpacket
+[A] tss_sdk_wait_verify
+[A] unsigned
+[A] unsigned __int128
+[A] unsigned char
+[A] unsigned int
+[A] unsigned long
+[A] unsigned long long
+[A] unsigned short
+[A] unsupported arm64 register
+[A] unsupported restore location for float register
+[A] unsupported restore location for register
+[A] user_info->app_id_.app_id_int_:%d
+[A] user_info->app_id_.app_id_str_:%s
+[A] user_info->app_id_.type_:%d
+[A] user_info->entry_id_:%d
+[A] user_info->role_id_:%s
+[A] user_info->size_:%d
+[A] user_info->uin_.type_:%d
+[A] user_info->uin_.uin_int_:%d
+[A] user_info->uin_.uin_str_:%s
+[A] user_info->world_id_:%d
+[A] version="%s"
+[A] void __cxxabiv1::scan_eh_tab(scan_results &, _Unwind_Action, bool, _Unwind_Exception *, _Unwind_Context *)
+[A] wild scan
+[A] with %d x %d thumbnail image
+[A] xmlns:%s
+[A] |desc=%s
+[A] |emulator_name=
+
+## 解密出的日志 / 状态 / 检测消息
+[D] %s.zip
+[D] %s/%d/%08X/tpup.zip
+[D] %s/%d/%08X/tpup64.zip
+[D] %s/ASD
+[D] %s/Android
+[D] %s/Download
+[D] %s/ano_tmp
+[D] %s/ano_tmp/%s
+[D] %s/config5.dat
+[D] %s/data
+[D] %s/files
+[D] %s/libtersafeupdate2.so
+[D] %s/shell_cache/vm/%s
+[D] %s/tersafeupdate2.jar
+[D] %s/test/%d/%s
+[D] %s/test/config5.dat
+[D] %s/tpup.dex.tmp
+[D] %s/tpup.so.tmp
+[D] %s/tpup.zip
+[D] %s://%s/iedsafe/Client/%s
+[D] %s_cid
+[D] %s|emu=%d|report=%d|locale=%d
+[D] ()Landroid/app/ActivityThread;
+[D] ()Ljava/lang/ClassLoader;
+[D] ()Ljava/net/URLConnection;
+[D] (Ljava/lang/String;)Ljava/security/Signature;
+[D] (Ljava/security/KeyStore$LoadStoreParameter;)V
+[D] /data/data/%s
+[D] /data/data/%s/files
+[D] /data/data/%s/files/%s/%s
+[D] /data/data/%s/files/adt.r4.t
+[D] /data/data/%s/files/libtersafeupdate2.so
+[D] /data/data/%s/files/tss.rwv.tmp
+[D] /data/data/%s/osimg/r/ot01
+[D] /data/data/%s/vprom/sys/sys01
+[D] /data/data/com.alephzain.framaroot
+[D] /data/data/com.kingo.root
+[D] /data/data/com.kingroot.kinguser
+[D] /data/data/com.smedialink.oneclickroot
+[D] /data/data/com.zachspong.temprootremovejb
+[D] /data/data/com.zhiqupk.root.global
+[D] /data/local/tmp/12re.34frida.56server78
+[D] /data/local/tmp/frida-server
+[D] /data/local/tmp/re.frida.server
+[D] /data/user/%d/%s/files
+[D] /proc/%d/task
+[D] /proc/%u
+[D] /proc/%u/cmdline
+[D] /proc/%u/status
+[D] /proc/%u/task
+[D] /proc/%u/task/%u
+[D] /proc/self/root/proc/self/fd
+[D] /sdcard/%s
+[D] /sdcard/%s/firm
+[D] /sdcard/Android/data/%s/files
+[D] /sdcard/Android/data/%s/files/%s
+[D] /system/bin/failsafe
+[D] /system/bin/frida-server
+[D] /system/etc/init.d/99SuperSUDaemon
+[D] /system/lib/libzygisk_loader.so
+[D] /system/lib64/libzygisk_loader.so
+[D] /system/usr/we-need-root
+[D] /vendor/
+[D] /vendor/bin/CloudAppEngine
+[D] 8.8.8.8 via %s dev
+[D] 9009_new_error_alert
+[D] : %llu
+[D] <init>
+[D] AnoSDKInit
+[D] AppName:%s
+[D] Arch=%s|SysVer=%s|ModelB64=%s|ApkNameB64=%s|IsAllowApkList=%d|
+[D] Brand:%s
+[D] CONNECTIVITY_SERVICE
+[D] CertHash=%s|DST=%04x|PkgNamesCnt=%d|PkgNames=%s|%s|
+[D] CertMD5=%s|CertAuthorB64=%s|
+[D] CloseAntiBlackModule
+[D] CloseAntiProfiler
+[D] CloseCloudPhoneScan
+[D] CloseDevInfoCollect:
+[D] CloseDevInfoCollectEx:
+[D] CloseEmulatorScan
+[D] CloseMrpcsBridge
+[D] CloseUserTagScan
+[D] CpuAbi:%s
+[D] CpuModel:%s
+[D] DeviceType=%d|TabletInfo=%s|
+[D] EnableGameReport
+[D] EnabledConnector:
+[D] FRIDA_AGENT_1.0
+[D] Fake_%s
+[D] GET_SIGNATURES
+[D] GP6_Close
+[D] GP6_Open
+[D] HistoryOpenID
+[D] IsEmu=%d|EmuName=%s|
+[D] IsEmulator2
+[D] IsRoot=%d|RootReason=%s|IsNeedReqApkList=%d|
+[D] IsVAP=%d|VAPName=%s|
+[D] JNIEnvNull
+[D] Ldalvik/system/BaseDexClassLoader;
+[D] MB_EnumApkClose
+[D] MB_EnumApkOpen
+[D] NotEmulator
+[D] OpenMrpcsBridge
+[D] OpenVerificationLog
+[D] PURPOSE_SIGN
+[D] PackageName:%s
+[D] RecordTouchStart
+[D] ReportQosIf
+[D] SImei:%s
+[D] ScanCert
+[D] ScanEmulator
+[D] ScanOpcode
+[D] ScanRoot
+[D] ScanTablet
+[D] ScanVirApp
+[D] StartGP3
+[D] StartGP6
+[D] StartSecScan
+[D] TSSConnectionCount
+[D] TSSInit
+[D] TssIoCtl.emm:%d,n:%s,p:%s,b:%u
+[D] TssIoCtl.emm_ex:%d,n:%s,p:files_dir=%s|wait=%d,b:%u
+[D] TssIoCtl.uts:%d,n:%s,p:%s,b:%u
+[D] TssSDKDelReportData
+[D] TssSDKGetReportData
+[D] TssSDKInit
+[D] TssSDKOnRecvData
+[D] WB_GetReportStr
+[D] WB_SyncOpenIDEx
+[D] XTask_%s_%s
+[D] [Landroid/content/pm/Signature;
+[D] [mf]scan %s, path:%s, t:%d
+[D] a64_%d.dat
+[D] a64_%d.sig
+[D] acekeeper.anticheatexpert.com
+[D] android/app/ActivityThread
+[D] android/os/Debug
+[D] android:debuggable
+[D] anoscan
+[D] anti_bm:%s
+[D] anti_cheat_open_id
+[D] anti_frida
+[D] anti_inot_failed
+[D] anti_root
+[D] antiemulator
+[D] apk_cnt:%d,sys_cnt:%d,adb:%d,cache_exists:%d,hist_adb:%d,rate:%d
+[D] apk_crc_eq
+[D] apk_crc_not_eq
+[D] apk_name=%s|app_name=%s|app_ver=%s|sdk_ver=%s|app_name_b64=%s
+[D] app_name=%s
+[D] att_cert_%d
+[D] att_vap_cert_%d
+[D] attest_scan_objvm
+[D] binder path:%s,cert:%s
+[D] binder:err1:%d,cnt1:%d;err2:%d,cnt2:%d
+[D] builtin_emu
+[D] cache_crc.dat
+[D] cert=%s|author=%s
+[D] cert_%d
+[D] cert_md5=%s|apk_hash_1=0x%08x|apk_hash_2=0x%08x|txt_seg_crc=0x%08x
+[D] cheat_openid_crash
+[D] close
+[D] com.kascend.chushou.lu
+[D] com.levelinfinite.sgameGlobal.midaspay
+[D] com.saitesoft.gamecheater
+[D] com.speedsoftware.rootexplorer
+[D] com/tencent/tp/MainThreadDispatcher2
+[D] connect
+[D] connected
+[D] currentActivityThread
+[D] custom_feature_%d
+[D] daemon_report
+[D] dalvik.system.PathClassLoader
+[D] data_%d
+[D] dec_tss_info:%s
+[D] disconnect
+[D] dl custom, name:%s, len:%d, crc:%08x, channel:%d
+[D] down.anticheatexpert.com
+[D] dual_uid_%d
+[D] elf_hook_scan
+[D] emu_crash
+[D] emu_crash_all
+[D] emu_tp
+[D] emu_white
+[D] emulator_name
+[D] env_rr:%d
+[D] err:%d
+[D] err=%d|all_wp=%d|all_bp=%d|used_wp=%d|used_bp=%d
+[D] fdopen
+[D] file_crc_eq
+[D] file_crc_eq2
+[D] file_crc_not_eq2
+[D] files_dir=%s|sd_dir=%s|lib_dir=%s
+[D] fname=%s|fbase=%p
+[D] fopen
+[D] force_cp2_scan
+[D] force_emu_scan
+[D] force_usertag_scan
+[D] frida
+[D] frida-agent
+[D] frida-agent-32.so
+[D] frida-agent-64.so
+[D] frida_agent_main
+[D] frida_scan
+[D] frida_server
+[D] func=%s|game_id=%d|open_id=%s|pkg_name=%s|uid=%d
+[D] func=%s|key=%s|value=%s
+[D] func=WB_GetReportStr
+[D] func=WB_HeartBeat|index=%d|md5=%s|uid=%d
+[D] func=WB_SyncGs2Host|game_id=%d|cdn_host=%s|cs_host=%s|cs_ip=
+[D] func=WB_SyncOpenID|open_id=%s|game_id=%d|locale=%d
+[D] func=feature_rcv_append|feature_ptr=%s|buf=%s
+[D] func=feature_rcv_end|feature_ptr=%s|append_suc=%d
+[D] func=feature_rcv_start|name=%s|crc=%d|size=%d
+[D] func=init_sdk|game_id=%u
+[D] func=set_user_info|entry_id=%d|open_id=%s
+[D] gcloud_connector
+[D] gcloud_connector_t
+[D] getClassLoader
+[D] gp4_no_root
+[D] gs3_init
+[D] https://%s/gamesafe/mobile/%s/%08X
+[D] https://down.anticheatexpert.com/iedsafe/Client/android/8899/71C1E6D7/donot_delete_me
+[D] inf_cl:1|%d|%d|%d|%08x
+[D] info=%s
+[D] init.rockchip.rc
+[D] init.svc.cloudAppEngine
+[D] init.svc_debug_pid.cloudAppEngine
+[D] initVerify
+[D] initialize
+[D] inner_apk_crc_eq
+[D] inner_apk_crc_not_eq
+[D] inner_apk_file_crc_eq2
+[D] inner_apk_file_crc_not_eq2
+[D] isDebuggerConnected
+[D] is_frond:%d,emu:%d,MBS_show:%d,heart_cnt:%d
+[D] is_root
+[D] is_unlock=%d|reason=%s
+[D] java/security/Signature
+[D] java_inited
+[D] layout:%d,%d
+[D] lib-dir:%s
+[D] libfrida-gadget.so
+[D] libglrenderer.so
+[D] libsandhook.edxp.so
+[D] libxxAndroidLoader
+[D] loadClass
+[D] magic:%d
+[D] md_cnt:%d
+[D] mem_trap_no_root
+[D] name=%s
+[D] name=%s|feature=%s|cert_crc=0X%08X|size=%u|install_t=%lu|is_custom=%d
+[D] name=%s|feature=%s|cert_md5=%s|fake_cert=%d
+[D] name=%s|feature=%s|size=%d|mtime=%d|cert_md5_crc=0x%08x
+[D] name=%s|size=%d|crc=0x%08x|mark=0x%08x
+[D] name=%s|size=%d|crc=0x%08x|root=%d
+[D] nj.cschannel.anticheatexpert.com
+[D] ob_ace_gs_%d.zip
+[D] ob_gs2_%d.zip
+[D] opcode_scan
+[D] openConnection
+[D] openOutputStream
+[D] open_id_eq
+[D] open_log
+[D] opendir
+[D] opt_%s
+[D] path=%s|permission=%s
+[D] pid=%d
+[D] pj.ishuaji.cheat
+[D] pool-frida
+[D] pop_win:%s
+[D] pos=%ld
+[D] prop:%s
+[D] ptrace
+[D] rate:%.2f,hit:%d,name:%s
+[D] rate=%d|reason=%s
+[D] reason=%s|root=%d|cert=%s
+[D] report_apk
+[D] report_bk
+[D] result=%d
+[D] ro.com.cph.non_root
+[D] ro.product.vendor.device
+[D] ro.product.vendor.name
+[D] ro.vendor.build.fingerprint
+[D] ro.vendor.platform: cloudmatrix1
+[D] ro.vendor.platform: cloudmatrix2
+[D] ro.vendor.platform: cloudmatrix3
+[D] ro.vendor.rk_sdk
+[D] root=%d|x86=%d|apk_cnt=%d|adb=%d|machine=%s|sys_ver=%s|root_record=%d
+[D] root_process_exists
+[D] scan1
+[D] scan_by_detect
+[D] scan_loop2
+[D] scan_x86
+[D] scan_x86_by_mem
+[D] scancode
+[D] sdcard-path:%s
+[D] sdcard-pkg-path:%s
+[D] secc: %d;%d;%d;%d;%d
+[D] sendDataToSvr
+[D] senddatatosdk
+[D] senddatatosvr
+[D] sensor_detect
+[D] seq=%u|pid=%d|time=%ld
+[D] setConnectTimeout
+[D] setReadTimeout
+[D] setSignaturePaddings
+[D] setsenddatatosvrcb
+[D] signatures
+[D] size:%.2f,%d,%d,%.2f,%.2f
+[D] size=%u|mtime=%u
+[D] startService
+[D] start_anti_auto_clicker2
+[D] state:%08x,r:%d/%d/%d/%d/%d/%d/%d,p:%d/%d,%d
+[D] tbt:%d,n:%s,b:%u,p:%s
+[D] tid=%d
+[D] token=%d
+[D] tp_ver:%s
+[D] tp_ver:NULL
+[D] trusted_scanner
+[D] ts2_always_start
+[D] tss_connect_count
+[D] tss_main:%s,0x%lx
+[D] tss_sdk_init
+[D] tss_sdk_init_finish
+[D] tss_sdk_init_start
+[D] tyf.cschannel.anticheatexpert.com
+[D] type_%d
+[D] unlock_root
+[D] user_tag:%s%d
+[D] vendor_id
+[D] verify
+[D] virapp_white_%d
+[D] vm_debug.img
+[D] vpn:%d
+[D] white_pkg_cert_%d
+[D] win:%s;
+[D] wsa_dialog_init_cn
+[D] x86_mem_failed
+[D] x86_sys_scan
