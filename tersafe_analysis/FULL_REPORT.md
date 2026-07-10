@@ -270,6 +270,50 @@ name=%s|feature=%s|size=%d|mtime=%d|cert_md5_crc=0x%08x
 
 ---
 
+## 15. 专题深挖：`sub_42AD54` —— MRPCS 数据包解析/分发（逐指令佐证）
+
+调用链：由 **`0x42a700`** 调用（MRPCS 处理线程）。原型 `handle_mrpcs_data(ctx v36, buf a2, len a3, flag a4)`。
+
+**(1) 前置校验** `sub_4297D8(ctx,flag)`，失败(&1)直接返回。
+
+**(2) 建流 + 读魔数**：`sub_3F88BC/3F8AF8` 在 `a2` 上建读取器；读首 dword `v42`。
+`0x67324752 = 0x04034B50 = "PK\x03\x04"`（ZIP 本地文件头）。是 ZIP 走 zip 分支；否则 `v44=1`。
+
+**(3) 解压** `sub_42A338`：内部反混淆出标签串
+`0x99132: "mvbqhujh{k6|yly" ⊕ 0x18 = "unzipmrpcs.data"`，
+再调 zlib（`0x3d555c` init / `0x3d5598` inflate / `0x3d5778` end）**解压 `mrpcs.data`**，得明文 `v43`(长 `v52`)。
+
+**(4) 包头魔数校验（双重 key）**：
+`key = buf[1] + buf[3]`；`sig[i] = buf[4+i] ⊕ key`（i=0..5）；与 `(len&0xff) ⊕ {0x56,0x4D,0x52,0x50,0x43,0x53}` 比对，
+即 ASCII **`"VMRPCS"`**（V M R P C S）。不符则进入解析分支。
+
+**(5) 解析** `sub_3A2D38(state, v43, v52)`（逐指令确认）：
+```
+magic  = *(u32*)buf        // [0..3] 期望校验值
+k1     = buf[0]            // key1
+k2     = buf[1]            // key2
+payload= buf+4 ; plen=len-4
+for i in payload: payload[i] = (payload[i] ⊕ k1) + k2     // 0x3a2de8..0x3a2dfc
+chk = sub_2e6188(payload, plen)                            // 计算校验
+if chk == magic:  用工厂 0x41a0a4 建容器对象, 虚调 vtable+0x10 解析
+                  (按 plen 是否 >3 选两种容器：common / single)
+返回对象 v37；其首字节 v35 = 命令类型
+```
+
+**(6) 加锁分发**：全局锁 `unk_566818`（`0x364BDC`=lock/`0x364C14`=unlock），`unk_564988` 用 `0x419368`+`0x42B51C` 一次性初始化。`switch(v35)`：
+- **case 1（common data）**：`ctx[10]=2`；`sub_42BE5C(ctx, ctx[1660], 0, ctx+48/96/120/24/216)` 装载规则集；用迭代器 `0x3864F4/386528/38655C` 遍历扫描项列表，对每个非空项 `memset 256B` 后调 **`sub_3E06D0`**——其内部读
+  `0x911e6: "7hjw{7k}t~7uyhk" ⊕ 0x18 = "/proc/self/maps"`，即**按下发的扫描项扫描进程内存映射**；命中则 `sub_434F3C` 派发/上报。末尾 `ctx[15]` 置位则 `sub_37DA04(_,5)` 通知。
+- **case 4（single data）**：`ctx[14]=2`；`sub_42BE5C(ctx, ctx[1656], 1, ctx+336/384/408/312/240)` 装载“单条”规则集；通知。
+- **case 3**：`ctx[12]=2`，确认/空分支 + 通知。
+
+**(7) 收尾**：释放 `v37`、`v43`，关闭读取器 `sub_3F88E8`。
+
+**结论**：`sub_42AD54` 是 MRPCS **“收到云端下发包 → 解压 `mrpcs.data` → 验 `VMRPCS` 魔数 → 逐项 `(⊕k1)+k2` 反混淆并校验 → 按命令号把 common/single 规则集装载进上下文、把扫描项投递给内存扫描器(读 `/proc/self/maps`)执行、命中上报并唤醒线程”** 的核心分发器。对应日志 `mrpcs_common_data_not_match`/`mrpcs_single_data_not_match`/`mrpcs_data_crc_error` 正是本函数第(4)(5)步的校验失败点。
+
+关键地址：`0x42AD54`(本函数)、`0x42A700`(调用者)、`0x42A338`(解压 mrpcs.data)、`0x3A2D38`((⊕k1)+k2 解析+校验)、`0x2E6188`(校验和)、`0x3E06D0`(读 /proc/self/maps 内存扫描)、`0x42BE5C`(装载规则集)、`0x434F3C`(命中派发)、`0x37DA04`(线程通知)、锁 `unk_566818`。
+
+---
+
 ## 附录 A：随附文件
 - `FULL_REPORT.md`（本文，合订本）
 - `tersafe_analysis.md`（原始分析）
