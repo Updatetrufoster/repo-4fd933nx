@@ -71,21 +71,45 @@ cert_md5=%s|apk_hash_1=0x%08x|apk_hash_2=0x%08x|txt_seg_crc=0x%08x
 - `txt_seg_crc` ← `ldr w6,[x20,#0x84]`（结构体偏移 **+0x84**，代码段 CRC 字段）
 - `cert_md5` ← 解密串 stub `0x4ec3d8(id=0x7f49)` 拼装
 
-### 2.1 代码段自校验 `txt_seg_crc` —— 计算点
+### 2.1 代码段自校验 `txt_seg_crc` —— 计算函数 `sub_28DE4C`（`0x28de4c`）
 
-**计算函数：`0x28de50`**（对**内存中自身 `mrpcs_lib` 模块的可执行段**做 CRC32），流程（逐指令佐证）：
+**本质：不是简单 CRC，而是「磁盘映像 vs 内存映像」逐页比对 + 内存代码 CRC32 + 篡改页记录」三合一的自校验。** 反编译（`sub_28DE4C(a1=扫描描述符, a2=上报ctx, a3=模块名, a4=内存基址/bias, a5=文件偏移基, a6=?)`）逐步：
 
-1. 通过内存映射/模块定位辅助 `0x4e0494` / `0x4e0834` / `0x4e09ac` 拿到自身模块 `mrpcs_lib` 的代码段地址范围（`0x4e0834` 内引用解密串 `"mrpcs_lib"` @`0x98251`）。
-2. 逐块 `crc32_cont(buf,len,seed)` 累加 —— `0x28e158: bl #0x48924c`（续算版 CRC32，共享表 `0xe2158`，poly `0xEDB88320`）。
-3. **跳过自身已知补丁区间**：内部维护 skip 列表并计数，调试串 `"!skip:0x%08x, bin_patch_cnt:%d"`（@`0x971f3`），把 SDK 自己合法的 inline patch 排除，避免误报。
-4. 收尾取反：`0x28e298: mvn w19, w8`（`~crc`，标准 CRC32 收尾）。
-5. 写入上下文对象：`0x28e29c: bl #0x2dad88`(取 ctx) → `0x28e2a0: str w19, [x0, #0x84]` —— 即 `ctx+0x84 = txt_seg_crc`。
+**入参 / 对象字段：**
+| 位置 | 含义 |
+|---|---|
+| `a1+88` | 分块大小（页大小，读文件/比对的粒度） |
+| `a1+72` | 累计篡改页计数器（bin_patch_cnt） |
+| `a1+80` | 本次扫描的总页数（`v33`） |
+| `a1+84` | 可疑标志（篡改率 ≥10% 等） |
+| `a1+672 / a1+680` | 内存有效区间 [base, end] |
+| `a1+704` | 内存区间可读标志（`sub_4DC8C0` 校验） |
+| `ctx+0x3ac`(`*(sub_2DAD88()+235)`) | **全局守卫**：置位则整段跳过（与 `tss_sdk_ioctl` 里 `ldr w8,[x0,#0x3ac]` 是同一标志） |
+| `ctx+0x84`(`*(sub_2DAD88()+33)`) | **`txt_seg_crc` 结果**（`= ~v55`） |
 
-**上报读取点**：`0x4cbdc4` 处 `ldr w6,[x20,#0x84]` 把它拼进 `cert_md5=%s|apk_hash_1=..|apk_hash_2=..|txt_seg_crc=0x%08x`。
+**流程：**
+1. `if (*(sub_2DAD88()+235)) return;` —— 守卫 `ctx+0x3ac`，禁用/已校验则直接退出。
+2. **模块名白名单**：`a3` 与两条解密串 `sub_4EB778(17074)` / `sub_4EBE38(17080)` 比对（`sub_4A2260`），只对目标自身模块（`mrpcs_lib`）做校验。
+3. 打开磁盘映像：`sub_4D6708`(建文件读取器)→`sub_4D694C`（映射，失败→错误码 24 `sub_1EE114(24)`）；`sub_4B8450(a3)` open fd（失败→错误码 25）。
+4. 计算对齐区间：`v23 = alignup(start, page)`、`v24 = aligndown(end, page)`、`v25 = v24-v23`（对齐后的代码段长度），`lseek(fd, v23+a5, SEEK_SET)` 定位到磁盘对应偏移。
+5. **主循环（逐页）**：
+   - `sub_4B6678(fd, buf, page)` 从**磁盘文件**读一页到 `v58`；读不满一页 = 到尾，退出。
+   - 边界/可读性校验（`a1+672/680/704`）后，`v43 = v23 + a4` = 该页**内存地址**。
+   - `v55 = sub_48924C(v43, page, v55)` —— 对**内存中的代码页**做 `crc32_cont` 累加（就是运行时代码段 CRC）。
+   - `v44 = sub_4A4658(v43, v58, page)` —— **内存页 vs 磁盘页 memcmp**；不一致再经 `sub_4E0834` 复核。
+   - 页不一致时：计数 `v57++`、`*(a1+72)++`，并调 `sub_28E2E4(a1, a2, page_va, mem_ptr, file_buf)` **把该页登记为 bin_patch/skip 项**（对应调试串 `"!skip:0x%08x, bin_patch_cnt:%d"`）；**篡改页超过 `0x13`(19，即 >20 页) 就中止**。
+   - 每 50 页 `sub_4B83EC(10000)` usleep 10ms 限速（降 CPU 峰值）。
+6. **收尾**：
+   - `sub_28E490(v49, a2, v33, v57)` 上报本次扫描（总页 `v33`、篡改页 `v57`）。
+   - `*(a1+80)=v33`；`*(a1+84)= (页数<0x64 || v57<1 || 100*v57/v33>=10)` —— **篡改率 ≥10% 置可疑标志**。
+   - `if ((v56&1)==0) *(sub_2DAD88()+33) = ~v55;` —— 内存读成功时把 `~crc32(内存代码)` 写入 **`ctx+0x84 = txt_seg_crc`**（ASM：`mvn w19,w8` → `str w19,[x0,#0x84]` @`0x28e298/0x28e2a0`）。
 
-- 上报时与 APK 哈希、证书 MD5 一起打包 → 服务端比对，检测 **inline hook / .text patch / 内存改代码**。
-- 这也是 `[A] inline_hook_opcode_dismatch`、`[D] elf_hook_scan / opcode_scan / ms_hook_opcode / ScanOpcode` 这些扫描的配套：本地扫 hook 特征 + 代码段 CRC 上报双保险。
-- 相关：`dl_iterate_phdr`（GOT `0x51d438`，唯一调用者 `0x50ae74`）与 `dladdr`（GOT `0x51d090`）用于枚举/定位已加载模块的程序头段，供上述定位可执行段使用。
+**上报读取点**：`0x4cbdc4: ldr w6,[x20,#0x84]` 把 `txt_seg_crc` 拼进 `cert_md5=%s|apk_hash_1=..|apk_hash_2=..|txt_seg_crc=0x%08x`。
+
+- 检测目标：**inline hook / .text patch / 内存改码** —— 既有内存代码 CRC（服务端比对），又有内存 vs 磁盘逐页 diff 直接定位被改的页。
+- 与 `[A] inline_hook_opcode_dismatch`、`[D] elf_hook_scan / opcode_scan / ms_hook_opcode / ScanOpcode` 配套：本地扫 hook 特征 + 代码段 CRC + 逐页 diff 三重保险。
+- SDK 自身合法 patch 记入 bin_patch/skip 列表避免误报；>20 页篡改直接中止判定。
+- 辅助定位模块段：`dl_iterate_phdr`（GOT `0x51d438`，唯一调用者 `0x50ae74`）、`dladdr`（GOT `0x51d090`）。
 
 ### 2.2 APK / 文件 CRC
 判定结果串（解密）：
