@@ -105,7 +105,54 @@ TssSDKDelReportDataN(cmd 0x3c…) 确认后从队列删除
 
 ---
 
-## 7. 置信度 / 未决
+## 7. 解混淆：`tss_sdk_ioctl` 的最终调用落点
+
+把 `tss_sdk_ioctl (0x1bce54)` 的控制流平坦化/不透明谓词剥掉后，真实逻辑只有三步：
+
+```c
+int tss_sdk_ioctl(int cmd, void* in, void* out, long flag, long extra) {
+    ctx = sub_2dad88();                 // 取 TLS/全局上下文
+    if (ctx[0x3ac] != 0) { /* 守卫早退（0x1bce88 那段 ldr/ret 是垃圾块） */ }
+
+    // ① 有注册处理器 → 虚调
+    h = *(void**)0x55e8e8;              // 注册的引擎对象
+    if (*(void**)0x55e8e0 && (*h_vtbl_slot0x18) && h) {
+        vtbl = *(void**)h;
+        return (*(fn*)(vtbl + 0x18))(h, cmd, in, out, flag, extra);  // br x6
+    }
+
+    // ② 无注册处理器 → 内置跳转表兜底
+    if ((unsigned)(cmd-1) <= 0x57) {                 // 仅 cmd∈[1,0x58]
+        target = 0x1bcf48 + (int32)tbl_0x90ec0[cmd-1];
+        goto *target;
+    }
+    goto default_0x1bd694;               // 越界 → 默认/空
+}
+```
+
+**最终落点有两条：**
+
+**(A) 注册引擎对象的虚函数 `vtable+0x18`（v3/v4 走这条）**
+- 引擎对象在 `JNI_OnLoad` 初始化时创建（`0x1d45f0` 一带）：分配 **0x1538 字节**的 `TssSdk` 类对象（`0x4e8854`=分配器），存到全局 `[0x55e900]`，再注册进 `[0x55e8e8]`（store @`0x1d4934`）、`[0x55e8e0]`（store @`0x1d493c`）。类名由相邻符号 `_ZN6TssSdk16sdt_report_errorEv` 佐证 = **`TssSdk`**。
+- ioctl 分发就是 `TssSdk::<vtable+0x18>(this, cmd, …)` 的虚调（`br x6`，尾调）。该虚槽在构造时绑定，**是所有 report/命令的真正总入口**。
+- v3 的 `cmd=0x67(103)`、v4 的 `cmd=0x6a(106)` 都 **> 0x58**，不在内置表内 → **只能经这条虚调路径**处理。
+
+**(B) 内置跳转表 `0x90ec0`（v1/v2 的 cmd 落这里，作为未注册时兜底）**
+`target = 0x1bcf48 + (int32)*(0x90ec0 + (cmd-1)*4)`，已复原：
+
+| cmd | 版本 | 处理块 | 该块内最终调用（部分） |
+|---|---|---|---|
+| `0x01` | v2 | `0x1bcf58` | `…→0x22d7c0`（取上报队列项） |
+| `0x25` | v3 | `0x1bd1a4` | `0x4e8970 / 0x4a14cc / 0x4eaf98` |
+| `0x3b` | v4 | `0x1bd33c` | `0x4c7120 / 0x4c73b0` |
+| `0x3c` | v4-del | `0x1bd5a0` | `0x222e90 / 0x223d34` |
+| `0x32` | v3 | `0x1bd694` | = 默认/空块（与越界同址） |
+
+**结论**：GetReportData 全家的“最终调用”统一收敛到 **`TssSdk` 引擎单例（`[0x55e900]`/注册于 `[0x55e8e8]`）的 `vtable+0x18` 虚函数**；仅当该引擎未注册时，`cmd 1..0x58` 才回退到 `0x90ec0` 内置跳转表的对应块。混淆手法（平坦化 + 不透明谓词 + `movk/eor/csel` 常量计算 + `br` 查表）已全部剥离并复原命令号与落点。
+
+---
+
+## 8. 置信度 / 未决
 
 - ioctl 命令号（1 / 0x67 / 0x32 / 0x25 / 0x6a / 0x3b / 0x3c）为**直接反汇编确认**。
 - 各命令号对应的服务端语义（具体取哪张表/哪段队列）需 `tss_sdk_ioctl` 句柄表 `0x55e8e0` 的运行时对象或更多数据流跟踪才能定名。
