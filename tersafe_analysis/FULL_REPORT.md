@@ -488,5 +488,6 @@ sub_42A700 (下载线程)
 - `tersafe_logs.txt`（754 行日志/诊断串）
 - `anti_tamper_crc.md`（防篡改专题）
 - `crc_variants.md`（CRC 变体专题）
+- `vmrpcs_deep.md`（VMRPCS 深挖独立专题：顶层接收器/异步任务/命令处理器/内存扫描器）
 - `decrypted.txt`（2085 条解密串，带 callsite/stub/id）
 - `decrypted_strings_sorted.txt`（2059 条去重排序）
