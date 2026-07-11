@@ -71,10 +71,21 @@ cert_md5=%s|apk_hash_1=0x%08x|apk_hash_2=0x%08x|txt_seg_crc=0x%08x
 - `txt_seg_crc` ← `ldr w6,[x20,#0x84]`（结构体偏移 **+0x84**，代码段 CRC 字段）
 - `cert_md5` ← 解密串 stub `0x4ec3d8(id=0x7f49)` 拼装
 
-### 2.1 代码段自校验 `txt_seg_crc`
-- 保存在对象偏移 `+0x84`，在初始化阶段对**内存中自身 .text 段**做 CRC32 后写入。
+### 2.1 代码段自校验 `txt_seg_crc` —— 计算点
+
+**计算函数：`0x28de50`**（对**内存中自身 `mrpcs_lib` 模块的可执行段**做 CRC32），流程（逐指令佐证）：
+
+1. 通过内存映射/模块定位辅助 `0x4e0494` / `0x4e0834` / `0x4e09ac` 拿到自身模块 `mrpcs_lib` 的代码段地址范围（`0x4e0834` 内引用解密串 `"mrpcs_lib"` @`0x98251`）。
+2. 逐块 `crc32_cont(buf,len,seed)` 累加 —— `0x28e158: bl #0x48924c`（续算版 CRC32，共享表 `0xe2158`，poly `0xEDB88320`）。
+3. **跳过自身已知补丁区间**：内部维护 skip 列表并计数，调试串 `"!skip:0x%08x, bin_patch_cnt:%d"`（@`0x971f3`），把 SDK 自己合法的 inline patch 排除，避免误报。
+4. 收尾取反：`0x28e298: mvn w19, w8`（`~crc`，标准 CRC32 收尾）。
+5. 写入上下文对象：`0x28e29c: bl #0x2dad88`(取 ctx) → `0x28e2a0: str w19, [x0, #0x84]` —— 即 `ctx+0x84 = txt_seg_crc`。
+
+**上报读取点**：`0x4cbdc4` 处 `ldr w6,[x20,#0x84]` 把它拼进 `cert_md5=%s|apk_hash_1=..|apk_hash_2=..|txt_seg_crc=0x%08x`。
+
 - 上报时与 APK 哈希、证书 MD5 一起打包 → 服务端比对，检测 **inline hook / .text patch / 内存改代码**。
 - 这也是 `[A] inline_hook_opcode_dismatch`、`[D] elf_hook_scan / opcode_scan / ms_hook_opcode / ScanOpcode` 这些扫描的配套：本地扫 hook 特征 + 代码段 CRC 上报双保险。
+- 相关：`dl_iterate_phdr`（GOT `0x51d438`，唯一调用者 `0x50ae74`）与 `dladdr`（GOT `0x51d090`）用于枚举/定位已加载模块的程序头段，供上述定位可执行段使用。
 
 ### 2.2 APK / 文件 CRC
 判定结果串（解密）：
