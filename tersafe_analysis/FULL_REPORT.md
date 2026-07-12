@@ -190,7 +190,7 @@ WB_GetReportStr / WB_SyncOpenIDEx
 
 **三合一**，结果打包上报服务端二次核验：
 
-1. **代码段自校验 `txt_seg_crc`**：对内存中自身 `.text` 段做 CRC32，存于结构体偏移 `+0x84`，抓 inline-hook / 内存改码。配套 `elf_hook_scan / opcode_scan / ScanOpcode / inline_hook_opcode_dismatch`。
+1. **代码段自校验 `txt_seg_crc`**（计算函数 `sub_28DE4C @0x28de4c`）：不是单纯 CRC，而是**逐页把内存映像与磁盘 so 映像 memcmp + 对内存代码 `crc32_cont` 累加**，结果 `~crc` 写入 `ctx+0x84`（=`*(sub_2DAD88()+33)`）；篡改页登记为 bin_patch/skip（`"!skip:0x%08x, bin_patch_cnt:%d"`），>20 页中止、篡改率≥10% 置可疑标志，每 50 页 usleep 限速，守卫标志 `ctx+0x3ac`。抓 inline-hook / .text patch / 内存改码。配套 `elf_hook_scan / opcode_scan / ScanOpcode / inline_hook_opcode_dismatch`。详见 `anti_tamper_crc.md §2.1`。
 2. **APK/文件校验**：`crc32_file`（4KB 分块 + size + mtime）校验 APK 本体、`inner_apk`、自身 so；判定 `apk_crc_eq/not_eq`、`inner_apk_crc_eq/not_eq`、`file_crc_eq/eq2/not_eq2`；本地缓存 `cache_crc.dat`。
 3. **证书 MD5/SHA-256**：`cal_cert_md5` 对签名证书算 MD5，与内置 `official_cert_md5` 比对，不符置 `fake_cert=1`，抓重签名/盗版；`CertHash=%s|DST=%04x|PkgNamesCnt=%d|PkgNames=%s|`。
 
