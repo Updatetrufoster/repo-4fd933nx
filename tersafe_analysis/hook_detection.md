@@ -15,7 +15,8 @@ libtersafe 的 hook 检测是**多探测器 + 云端可下发特征**的组合�
 2. **`opcode_scan`** — 操作码扫描：在代码区搜可疑跳转/断点操作码（trampoline `br/blr`、`brk/hlt` 等）。
 3. **`ts2_got`** — GOT/PLT 完整性：校验导入表跳转目标是否落在预期模块范围内（检测 GOT/PLT 重定向 hook）。
 4. **代码段自校验 `sub_28DE4C`** — `txt_seg_crc`，逐页内存 vs 磁盘 diff（详见 `anti_tamper_crc.md §2.1`）。
-5. **`various_opcode` / `crash_various_opcode` / `opcode_crash`** — 反调试/反篡改的崩溃诱饵操作码。
+5. **`gp4_pagemap`** — **影子页/双重映射 hook 检测**：读 `/proc/self/pagemap` 物理帧号(PFN)，穿透「只读视图干净、取指走另一物理页」的物理层 hook（见 §4.5）。
+6. **`various_opcode` / `crash_various_opcode` / `opcode_crash`** — 反调试/反篡改的崩溃诱饵操作码。
 
 命中后经 `name=%s|feature=%s|cert_crc=…` 组包，由 `0x434F3C` 派发、走 GetReportData 上报。
 
@@ -104,6 +105,47 @@ sub_28DE4C(a1=扫描描述符, a2=上报ctx, a3=模块名, a4=内存bias, a5=文
 
 ---
 
+## 4.5 影子页 / 双重映射 hook 检测（`pagemap`）—— **有**
+
+**结论：有专门的影子页 hook 检测，走 `/proc/self/pagemap` 读物理帧号（PFN）比对。**
+
+「影子页 hook」= 攻击者把可执行页做**双重映射**：`.text` 的只读视图仍是干净字节，但 CPU 实际取指走另一份物理页（被改过）。这样 §3 的「内存 vs 磁盘 memcmp」读到的是干净视图，抓不到。libtersafe 用 pagemap 从**物理层**穿透这一招。
+
+**证据（解密串）：**
+| 串 | 密文@ | 作用 |
+|---|---|---|
+| `pagemap` | `0x267054` | 打开 `/proc/self/pagemap` |
+| `gp4_pagemap` | `0x266aa0` | pagemap 检测项主体 |
+| `gp4_pagemap_wb` | `0x265068` | pagemap 检测开关/白名单（writeback） |
+| `gp4_pagemap_ig` | `0x2664b8` | pagemap 忽略/例外列表（ignore） |
+| `/proc/self/map_files` | `0x27d5bc` | 枚举实际文件背靠映射 |
+| `/proc/self/maps` | `0x27d220` | 区间枚举 |
+
+**检测函数链（逐指令佐证）：**
+```text
+0x266aa0  gp4_pagemap 主体
+  ├─ decrypt("gp4_pagemap") 注册/取配置
+  ├─ 0x2657b8  打开+映射 /proc/self/pagemap
+  │      └─ mmap/read 页表项（每虚拟页 8 字节）
+  ├─ 0x2671dc  逐页比对
+  │      ├─ 取虚拟页 → pagemap 偏移 = (vaddr>>12)*8
+  │      ├─ 读 8 字节 → 提取 PFN(bit0..54) / present(bit63)
+  │      ├─ 0x2dad88 取 ctx（记录/守卫）
+  │      └─ 0x4a4774 字节模式比较（配合内存视图）
+  └─ 命中 → 计入 hook 结果上报
+```
+
+**判定逻辑（strong inference）：**
+- 对同一可执行区间，比较「只读视图对应的物理帧」与「实际取指视图/期望帧」；两者 PFN 不一致 → 双重映射/影子页 hook。
+- 也检查页的 present/swap 位与是否 file-backed（配 `/proc/self/map_files` 的 inode/路径），异常匿名可执行页即可疑。
+- `gp4_pagemap_wb` / `gp4_pagemap_ig` 是云端可调的**开关 + 例外名单**（避免对系统合法双映射误报，如 `librknnhal_bridge`、ART JIT 等）。
+
+**意义**：这正是针对「§3 mem-vs-disk 抓不到的影子页/物理层 hook」的补强——从页表物理帧号入手，`elf_hook_scan`(虚拟视图) + `gp4_pagemap`(物理帧) 双管齐下。
+
+> 相关但不同：`dual_app` / `dual_uid_%d` / `dual_app_files` / `dual_uid_not_same`（`0x2679c0` 一带）是**多开/分身 App 检测**（比对 uid/文件），不是影子页；两者只是都用 `/proc/self/*` 且名字带 dual，注意区分。
+
+---
+
 ## 5. `ts2_got` —— GOT / PLT 完整性
 
 注册于 `0x25574c`，检测函数在 `0x255004` 一带，引用导入跳转表 `0x52dd30`：
@@ -171,6 +213,7 @@ hook 检测与下列同表注册、共用 `/proc/self/maps` 驱动与上报：
 | `sub_28E2E4` | bin_patch/skip 登记 |
 | `sub_28E490` | 篡改页上报组包 |
 | `0x28e558` | opcode_scan 注册/入口 |
+| `0x266aa0 / 0x2657b8 / 0x2671dc` | ★ gp4_pagemap 影子页检测（读 `/proc/self/pagemap` PFN 比对） |
 | `0x255004 / 0x25574c` | ts2_got GOT/PLT 校验（表 `0x52dd30`） |
 | `sub_3E06D0` | `/proc/self/maps` 扫描驱动 |
 | `sub_434F3C` | 命中派发/上报 |
