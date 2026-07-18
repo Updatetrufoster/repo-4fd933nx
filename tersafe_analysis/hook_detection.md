@@ -103,6 +103,48 @@ sub_28DE4C(a1=扫描描述符, a2=上报ctx, a3=模块名, a4=内存bias, a5=文
 
 `opcode_crash` / `crash_various_opcode` 是**主动防御**：在关键路径埋崩溃诱饵操作码，被单步/改写时触发异常，兼作反调试。
 
+### 4.1 `opcode_scan` 触发条件深挖（逐指令 + 混淆说明）
+
+`opcode_scan` 检测例程集中在 `0x26943c` / `0x269520`（decrypt(`opcode_scan`,stub `0x4e79c4`) 后进入）。**该例程做了控制流平坦化 + 不透明谓词混淆**（大量 `orr wX,wY,#n; eor wX,..` 互相抵消的垃圾常量、`mov/movk` 拼常量作为分发状态），因此**逐位的操作码掩码表被刻意隐藏**，无法纯静态完整还原（诚实标注）。但确认到的具体触发机制如下：
+
+**A. ptrace 自检 / 寄存器校验（confirmed）**
+`0x50e6c0` = **`ptrace` PLT**（GOT `0x51d008` → `R_AARCH64_JUMP_SLOT ptrace@LIBC`）。例程用：
+```c
+// 0x2694ac
+ptrace(0x4204 /*PTRACE_GETREGSET*/, pid, 1 /*NT_PRSTATUS 通用寄存器*/, &iov);
+if ((reg & 0xffff0000)!=0xBEEF0000 || (reg & 0xffff)!=0x00AD) fail;  // 哨兵 0xBEEF00AD
+// 0x269560 / 0x2695b8
+ptrace(0x4205 /*PTRACE_SETREGSET*/, pid, 1,      &iov);
+ptrace(0x4205 /*PTRACE_SETREGSET*/, pid, 0x404 /*NT_ARM_SYSTEM_CALL*/, &iov2);
+```
+- 用 `PTRACE_GETREGSET/SETREGSET` 读写目标寄存器，并核对一个**哨兵值 `0xBEEF00AD`** 是否能被正确读回——**若已有调试器/ptracer 占用了 ptrace 通道，这一步会失败** → 判定被调试/被 hook。
+- `SETREGSET(NT_ARM_SYSTEM_CALL=0x404)` 可改写目标 syscall 号，配合 `crash_various_opcode` 让目标执行到崩溃/受控点。
+
+**B. 崩溃诱饵动作（confirmed）**
+命中后走 `0x269520`：再次 `ptrace(0x4205,…)` 写回寄存器，失败即 `mov w0,#-1` 返回错误标志，交上层上报/崩溃（`opcode_crash`）。
+
+**C. 代码区操作码匹配（design-level，掩码被混淆）**
+`opcode_scan` 由 `/proc/self/maps` 扫描器 `sub_3E06D0` 驱动，对 `r-xp` 区逐条取 32-bit 指令字做 `(insn & mask)==pattern` 匹配。它命中的**操作码类别**（据设计意图 + 邻接 crash 项 + 常规反外挂实现）：
+- inline hook / trampoline：`br/blr xN`（`0xD61F0000/0xD63F0000` 系）、`ldr x16,#imm; br x16` 常量池跳转、指向模块外的 `b/bl`；
+- 陷阱指令：`brk #imm`（`0xD4200000` 系）、`hlt`；
+- 被改写/异常的指令序列（自改码、脱壳跳板）。
+> 精确掩码/pattern 表因平坦化+不透明谓词隐藏，需运行时或反混淆才能逐条确认——本项标 **unconfirmed**。
+
+**D. 云端可下发新特征（confirmed，来自 §7）**
+`feature_rcv_start|name|crc|size` 通道能**热更 opcode 特征**，所以「一直触发」也可能是服务端新下发了一条匹配你环境的特征，而非本地固定规则。
+
+### 触发条件总表（为什么会「一直触发」）
+| # | 触发条件 | 证据 | 置信度 |
+|---|---|---|---|
+| 1 | 进程被调试 / 有 ptracer（ptrace 通道被占） | `ptrace GETREGSET` + 哨兵 `0xBEEF00AD` 校验失败 | confirmed |
+| 2 | 硬件断点 / 寄存器被改（读回寄存器不符） | `GETREGSET(NT_PRSTATUS)` 值校验 | strong |
+| 3 | `r-xp` 里有 inline hook/trampoline 操作码 | maps 扫描 + 操作码匹配 | strong（掩码 unconfirmed） |
+| 4 | 代码里有 `brk/hlt` 软件断点 | opcode_scan/opcode_crash 语义 | strong |
+| 5 | 服务端新下发的 opcode 特征匹配到你的代码 | `feature_rcv_*` 热更通道 | confirmed |
+| 6 | 自改码 / JIT / 脱壳跳板被误判 | 只认模式不认意图 | inference |
+
+**排查建议（诊断，非绕过）**：先确认环境里是否挂着调试器/Frida/HW 断点（触发条件 1/2/4）；再看命中上报的 `name=%s|feature=%s` 指出的是本地固定项还是云端 `feature`（触发条件 5）；若是自有模块被误报，定位引入上述指令形态的第三方库（触发条件 3/6）。
+
 ---
 
 ## 4.5 影子页 / 双重映射 hook 检测（`pagemap`）—— **有**
