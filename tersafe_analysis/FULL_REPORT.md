@@ -489,6 +489,7 @@ sub_42A700 (下载线程)
 - `anti_tamper_crc.md`（防篡改专题）
 - `crc_variants.md`（CRC 变体专题）
 - `vmrpcs_deep.md`（VMRPCS 深挖独立专题：顶层接收器/异步任务/命令处理器/内存扫描器）
+- `mrpcs_distribution.md`（MRPCS 下发机制专题：主机/CDN 选择/URL 模板/native socket+Java 下载/OnRecvData 入口/接收器与分发器全分支）
 - `report_api_deep.md`（上报接口 GetReportData v1/v2/v3/v4 深挖：两层转发/ioctl 命令号/版本差异/混淆）
 - `hook_detection.md`（hook 检测专题：elf_hook_scan/opcode_scan/ts2_got/代码段自校验/扫描项注册表/云端 feature 下发）
 - `decrypted.txt`（2085 条解密串，带 callsite/stub/id）
