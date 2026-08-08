@@ -1,0 +1,496 @@
+# libtersafe.so 完整逆向分析报告（合订本）
+
+> 目标文件: `dfenxiwanjianlibtersafe.so`
+> 类型: 腾讯 ACE（Anti-Cheat Expert）/ TP（TenProtect）mobile 反外挂 SDK 核心 native 库
+> 本文汇总本次全部逆向内容：识别 → ELF 结构 → 导出 API → 内置组件 → 字符串加密与解密 → 反检测能力 → MRPCS 与服务器 → 日志 → 防篡改(CRC/Hash/证书) → CRC 变体 → JNI → 附录/关键地址速查。
+
+---
+
+## 0. 摘要（TL;DR）
+
+`libtersafe.so` 是**腾讯 ACE/TP 移动反外挂 SDK v7.7.049.57576**（GCloud 集成），本包用于游戏 **三角洲行动（`com.tencent.tmgp.dfm`）**。它：
+
+1. 对外暴露 **70 个导出函数**（TSS SDK / tss_sdk_* / tp2_* 兼容层 / JNI）。
+2. 内置**自研内存虚拟机 MVM/AVM**，解释执行**云端下发的字节码扫描脚本**（外挂特征不硬编码，云端可热更）。
+3. 反 **Frida / Root / Xposed·Substrate·Zygisk / 模拟器 / 云手机 / 多开 / 调试(ptrace)**。
+4. 所有敏感字符串用**“每串独立解密 stub + 变常量 XOR 流”**加密——本次已用 Unicorn **批量解密 2085 条**。
+5. **MRPCS** 子模块负责“云端规则**下载 → VM 扫描 → 加密上报**”闭环，服务器域名 `*.anticheatexpert.com` + 十余个 IP 兜底。
+6. **防篡改**三合一：代码段 CRC 自校验 + APK/文件 CRC + 证书 MD5/SHA-256 比对，结果打包上报服务端。
+
+---
+
+## 1. 文件识别与基本信息
+
+| 项 | 值 |
+|---|---|
+| SONAME | `libtersafe.so` |
+| 架构 | ELF64 **AArch64 (ARM64)**，DYN 共享库，已 strip |
+| 大小 | 5,598,144 字节 (5.3 MB) |
+| GNU BuildID(SHA1) | `d70d7926094ae39a46745c12ddcc1877641f82e8` |
+| 依赖(NEEDED) | `liblog.so`, `libc.so`, `libm.so`, `libdl.so` |
+| 版本串 | `GCLOUD_VERSION_TP_7.7.049.57576`（GCloud 集成，TP 7.7.049） |
+| 编译路径残留 | `/Users/bkdevops/tpmobile/workspace/p-c5c18c.../china/mvm/source/VM/Memory/BopMemoryOperation.cpp` |
+
+编译路径含义：`bkdevops`=腾讯蓝盾 CI；`tpmobile`=TP 移动端；`china`=国内版；`mvm`=内置 mini-VM。
+
+**目标/白名单游戏包名**（内置）：`com.tencent.tmgp.dfm` / `com.proxima.dfm`（三角洲行动，反外挂包 `ano_dfh.zip` 的 `dfh`），以及 `pubgmhd`(和平精英)、`sgame`(王者荣耀)、`cf`(穿越火线)、`dnf` 等。
+
+---
+
+## 2. ELF 段布局（vaddr == file offset，1:1 映射）
+
+| 段 | VA | 大小 | 说明 |
+|---|---|---|---|
+| `.rodata` | `0x90ec0` | `0x7b274` | 只读数据；含加密字符串池、CRC/zlib 表、libjpeg/密码学常量 |
+| `.text` | `0x1b6af0` | `0x3574b0` | 全部代码（反汇编 875,820 条指令） |
+| `.plt` | `0x50dfa0` | `0xf90` | 导入桩（`__android_log_print`@`0x50eaf0` 等） |
+| `.data.rel.ro` | `0x512f30` | `0x8f88` | 需重定位常量 |
+| `.fini_array` | `0x51beb8` | `0x10` | 2 个析构 |
+| `.init_array` | `0x51bec8` | `0x200` | **64 个构造函数**（加载即跑，布置反调试/初始化） |
+| `.got/.got.plt` | `0x51c2b8` | — | 全局偏移表 |
+| `.data` | `0x521500` | `0x3cea0` | 可写数据 |
+| `.bss` | `0x55e3a0` | `0x1a458` | 零初始化；**字符串解密输出缓冲 @`0x568fc4`** |
+
+加密字符串数据池 **DATA @ `0xfbbb0`**（`.rodata` 内）。
+
+---
+
+## 3. 导出接口（70 个，版本符号 `@@TERSAFE`）
+
+**TSS SDK（Java/C++ 新 API）**
+```
+TssSDKInit 0x1cc398   TssSDKInitEx 0x1cc964   TssSDKSetUserInfo 0x1ccce8
+TssSDKSetUserInfoWithLicense 0x1cd07c   TssSDKOnPause 0x1cd904   TssSDKOnResume 0x1cdd28
+TssSDKIoctl 0x1cf91c   TssSDKIoctlOld 0x1cf4e0   TssSDKFree 0x1cfcc8
+TssSDKGetReportData 0x1ce214  /2 0x1d01ac  /3 0x1d0218  /4 0x1d0674
+TssSDKDelReportData 0x1ce780  /3 0x1d0284  /4 0x1d0c2c
+TssSDKOnRecvData 0x1cec70   TssSDKOnRecvSignature 0x1d101c
+TssSDKRegistInfoListener 0x1d19e8   TssSDKForExport 0x1d1e94   GetTssExportFunc2 0x1d3220
+```
+**tss_sdk_*（内部 C API）**
+```
+tss_sdk_init 0x1bf3a0   tss_sdk_ioctl 0x1bce54
+tss_sdk_encryptpacket 0x1b9c24   tss_sdk_decryptpacket 0x1b9fa4   tss_sdk_ischeatpacket 0x1b8fb0
+tss_sdk_setgamestatus 0x1bb144   tss_sdk_setuserinfo(_ex/_with_license)
+tss_sdk_gen_session_data 0x1c44f8   tss_sdk_set_token 0x1c4000   tss_sdk_wait_verify 0x1c4aac
+tss_sdk_rcv_anti_data 0x1ba324   tss_sdk_dec_tss_info 0x1c1058   tss_recv_sec_signature 0x1c5dfc
+tss_get_report_data 0x1b9660 /2 0x1bece0 /3 0x1c4b20 /4 0x1c5474   tss_del_report_data(*)
+tss_enable_get_report_data 0x1b8ee8   tss_log_str 0x1b9908   tss_unity_str 0x1b7564
+```
+**tp2_*（TP2 兼容层）**
+```
+tp2_sdk_init 0x1c1498  /_ex 0x1c1aa0   tp2_sdk_ioctl 0x1c000c   tp2_getver 0x1c2550
+tp2_setoptions 0x1c29e4   tp2_setgamestatus 0x1c311c   tp2_setuserinfo(withlicense)
+tp2_regist_tss_info_receiver 0x1c3a84   tp2_dec_tss_info 0x1c3f70   tp2_free_anti_data 0x1c0fcc
+```
+**数值“加固”辅助（反内存改数值）**
+```
+tss_sdt_float2uint / double2uint64 / uint2float / uint642double
+```
+**JNI / C++**
+```
+JNI_OnLoad 0x1d62c4   tss_jni_cmd 0x2d0d58   TssJavaMethod_SendCmd 0x2d0d7c
+TssSdk::gen_random/gen_random2/sdt_report_error   tp2::gen_random
+```
+导出对象 `g_AllTssExportFunc`（函数表，`GetTssExportFunc2` 返回）。
+
+---
+
+## 4. 内置组件（静态链接进来的“大件”）
+
+- **MVM / AVM —— 自研内存虚拟机**：`AVM::BopMemoryOperation::PmemRead/PmemWrite(paddr_t,…)`、`mvm_bk_proc`、`mvm_bk_task`。执行**云端下发的字节码扫描脚本**（`Scan script`、`Invalid scan script at entry %d`、`wild scan`、`ScanCast`、`ms_scan_start`）——外挂特征以脚本下发、VM 内解释执行，规则可热更、不落硬编码。
+- **inline-hook 引擎**：`ms_hook_opcode`、`ms_set_inlie_hook`、`set_inline_hook_error`、`inline_hook_opcode_dismatch`、`elf_hook_scan`、`opcode_scan`。
+- **zlib ×3**（见 §10）：解压下发的 `.zip` 规则包 / `tpup*.zip` / `.so`·`.dex` 更新。
+- **libjpeg**：大量 JPEG/量化表字符串（截图取证/图像处理）。
+- **libunwind**：`.eh_frame` 展开、`scan_eh_tab`（崩溃/栈回溯）。
+- **TinyXML**：`TiXmlDocument`（配置解析）。
+- **密码学**：MD5/SHA1 家族 IV `0x67452301/0xefcdab89`@`0x99d20`、SHA-256 IV `0x6a09e667`@`0x9a1a0`（证书/签名校验）。
+
+---
+
+## 5. 字符串加密算法（完全逆向 + 可解密）
+
+所有敏感字符串（服务器地址、检测特征、类名、日志）加密存放在只读池 **DATA @ `0xfbbb0`**，运行时按 offset 解密并缓存到 **.bss @ `0x568fc4`**。
+
+- 每串一个**独立解密 stub**（全库 **101 个**），签名一致：`bl 0x4e4a30`(取 DATA 基址) + `bl 0x4e4a44`(取输出缓冲基址 `0x568fc4`)，差异仅一个**每串常量**（w15，如 `0x29/0x5b/0x45…`）。
+- 调用形式：`mov w0,#<offset>; bl <stub>` → 返回解密后的 C 字符串。
+- 等价算法：
+  ```python
+  key    = DATA[off]                    # 运行密钥种子
+  length = DATA[off+1] ^ key
+  for i in range(length):
+      plain[i] = DATA[off+2+i] ^ (key & 0xff)
+      key = ((key + i) ^ CONST) + 1     # CONST = 每串常量(w15)
+  # 末尾另有基于 0xff 的校验/终止处理
+  ```
+
+**解密工具链**（本仓 `*.py`）：Capstone 全 `.text` 反汇编 → 识别 101 个 stub 与 3192 处调用点 → 提取 `(stub, imm)` 对 → **Unicorn** 加载镜像逐个调用 → 读 `0x568fc4` 得明文。共得 **2085 条**（去重 2059）。见 `decrypted.txt`、`decrypted_strings_sorted.txt`。
+
+抽样验证：`0x4e9270(0x3ea9)`→`builtin_emu`、`0x4eca98(0xe4df)`→`builtin_ourplay`、`0x4eb1d8(0x3e61)`→`BlueStacksX86`、`0x4e65b0(0x3e81)`→`Win11X86`。
+
+---
+
+## 6. 反外挂 / 反调试 / 反环境检测能力
+
+- **反 Frida**：`frida_scan`、`anti_frida`、`libfrida-gadget.so`、`frida-agent-32/64.so`、`frida_agent_main`、`FRIDA_AGENT_1.0`、`pool-frida`、`/data/local/tmp/re.frida.server`、`/system/bin/frida-server`、拆分混淆 `/data/local/tmp/12re.34frida.56server78`。
+- **反 Root / Hook 框架**：`anti_root`、`gp4_no_root`、`mem_trap_no_root`、`is_root`、`unlock_root`、`root_process_exists`、`libsandhook.edxp.so`、`/system/lib(64)/libzygisk_loader.so`、`/system/etc/init.d/99SuperSUDaemon`、`/system/usr/we-need-root`；root 应用包 `com.kingroot.kinguser`、`com.kingo.root`、`com.speedsoftware.rootexplorer`、`com.alephzain.framaroot` 等。
+- **反模拟器**：`IsEmulator2`、`ScanEmulator`、`antiemulator`、`builtin_emu`、`builtin_ourplay`、`BlueStacksX86`、`Win11X86`、`emu_crash/emu_crash_all/emu_tp/emu_white/force_emu_scan`。
+- **反云手机**：`init.svc.cloudAppEngine`、`/vendor/bin/CloudAppEngine`、`ro.vendor.platform: cloudmatrix1/2/3`、`ro.com.cph.non_root`、`init.rockchip.rc`、`ro.vendor.rk_sdk`。
+- **反调试**：`ptrace`、`android/os/Debug.isDebuggerConnected`、`android:debuggable`、`/proc/%u/status`、`/proc/%u/cmdline`、`/proc/self/root/proc/self/fd`、`/proc/%d/task`、inotify(`anti_inot_failed`)。
+- **反多开/虚拟框架**：`ScanVirApp`、`IsVAP=%d|VAPName=%s|`、`dual_uid_%d`、`Fake_%s`、`pj.ishuaji.cheat`、`com.saitesoft.gamecheater`、`com.kascend.chushou.lu`。
+- **签名/证书 & 应用清单**：`ScanCert`、`GET_SIGNATURES`、`cert_md5`/`official_cert_md5`/`fake_cert`、`MB_EnumApkOpen/Close`、`report_apk`。
+- **触摸/自动点击**：`RecordTouchStart`、`start_anti_auto_clicker2`、`com/tencent/tp/TouchListenerProxy`。
+- 汇总上报：`IsRoot=%d|RootReason=%s|IsNeedReqApkList=%d|`、`IsEmu=%d|EmuName=%s|`、`root=%d|x86=%d|apk_cnt=%d|adb=%d|machine=%s|sys_ver=%s|root_record=%d`。
+
+---
+
+## 7. MRPCS 模块与服务器地址（“解密地址 mrpcs”）
+
+### 7.1 MRPCS 是什么
+日志 tag `MRPCS_ANDROID`。负责**云端反外挂数据/扫描脚本的下载—扫描—上报**闭环，三线程：
+- `mrpcs_download_data_thread`（下载）
+- `mrpcs_scan_thread`（扫描，跑在 §4 的 MVM 里）
+- `mrpcs_send_data_thread`（上报）
+- 校验：`mrpcs_data_crc_error`、`mrpcs_data_len_error`、`mrpcs_single_data_not_match`、`mrpcs_common_data_not_match`。
+- JNI 桥接：`OpenMrpcsBridge` / `MrpcsBridgeCmd` / `CloseMrpcsBridge`。
+
+### 7.2 服务器地址（解密结果）
+**下载 / CDN：** `down.anticheatexpert.com`（主）、`dl.putdl.com`、`dl.timedl.com`（备）
+**完整 URL 样例：**
+```
+https://down.anticheatexpert.com/iedsafe/Client/android/8899/71C1E6D7/donot_delete_me
+```
+**URL 模板：** `%s://%s/iedsafe/Client/%s`、`https://%s/gamesafe/mobile/%s/%08X`、包名 `gamesafe/mobile/ano_dfh.zip`
+**通信/频道服务器（cs_host）：**
+`nj.cschannel.anticheatexpert.com`、`tyf.cschannel.anticheatexpert.com`、`acekeeper.anticheatexpert.com`
+**IP 直连兜底：** `180.109.156.92`、`36.155.240.19`、`153.3.50.229`、`119.45.69.203`、`14.22.9.201`、`120.232.27.62`、`157.148.45.163`、`106.55.209.88`、`139.186.105.110/225/126/94`、`42.81.179.246`、`111.30.185.235`、`220.194.120.73`、`109.244.170.205`
+**本地/回环：** `127.0.0.1`、`10.0.2.2`(模拟器网关)、网关探测 `8.8.8.8 via %s dev`。
+
+### 7.3 上报协议（WB_Sync 系列）
+```
+func=WB_SyncGs2Host|game_id=%d|cdn_host=%s|cs_host=%s|cs_ip=
+func=WB_SyncOpenID|open_id=%s|game_id=%d|locale=%d
+func=WB_HeartBeat|index=%d|md5=%s|uid=%d
+func=init_sdk|game_id=%u      func=set_user_info|entry_id=%d|open_id=%s
+WB_GetReportStr / WB_SyncOpenIDEx
+```
+配置键：`cdn_host`、`game_host`、`is_update_cdn_ok`、`CDNHost:`、`SetChannelHost:`。
+
+---
+
+## 8. 日志系统
+
+- 日志 TAG 唯一：**`"ACE"`**（模块内部另用 `MRPCS_ANDROID`）。
+- 中央日志函数 **`0x4e6390`** → `__android_log_print(prio,"ACE","%s",msg)`（PLT `0x50eaf0`）。全库**仅 1 处**直接调 `__android_log_print`；各模块先把消息格式化好再传入。
+- 全部可输出的日志/诊断串（明文 + 解密）见 `tersafe_logs.txt`（754 行），含 MRPCS 报错、扫描/检测消息、上报协议、libjpeg/libunwind/TinyXML 报错、pthread/文件 IO、TssSDK 接口名等。
+
+---
+
+## 9. 防篡改：完整性校验（CRC / Hash / 证书）
+
+**三合一**，结果打包上报服务端二次核验：
+
+1. **代码段自校验 `txt_seg_crc`**（计算函数 `sub_28DE4C @0x28de4c`）：不是单纯 CRC，而是**逐页把内存映像与磁盘 so 映像 memcmp + 对内存代码 `crc32_cont` 累加**，结果 `~crc` 写入 `ctx+0x84`（=`*(sub_2DAD88()+33)`）；篡改页登记为 bin_patch/skip（`"!skip:0x%08x, bin_patch_cnt:%d"`），>20 页中止、篡改率≥10% 置可疑标志，每 50 页 usleep 限速，守卫标志 `ctx+0x3ac`。抓 inline-hook / .text patch / 内存改码。配套 `elf_hook_scan / opcode_scan / ScanOpcode / inline_hook_opcode_dismatch`。详见 `anti_tamper_crc.md §2.1`。
+2. **APK/文件校验**：`crc32_file`（4KB 分块 + size + mtime）校验 APK 本体、`inner_apk`、自身 so；判定 `apk_crc_eq/not_eq`、`inner_apk_crc_eq/not_eq`、`file_crc_eq/eq2/not_eq2`；本地缓存 `cache_crc.dat`。
+3. **证书 MD5/SHA-256**：`cal_cert_md5` 对签名证书算 MD5，与内置 `official_cert_md5` 比对，不符置 `fake_cert=1`，抓重签名/盗版；`CertHash=%s|DST=%04x|PkgNamesCnt=%d|PkgNames=%s|`。
+
+汇总上报串（组装于 `0x4cbd7c`）：
+```
+cert_md5=%s|apk_hash_1=0x%08x|apk_hash_2=0x%08x|txt_seg_crc=0x%08x
+name=%s|size=%d|crc=0x%08x|mark=0x%08x
+name=%s|feature=%s|size=%d|mtime=%d|cert_md5_crc=0x%08x
+```
+下发规则本身也带 CRC：`dl custom, name:%s, len:%d, crc:%08x, channel:%d`、`func=feature_rcv_start|name=%s|crc=%d|size=%d`，不符 `mrpcs_data_crc_error` 丢弃（防中间人篡改）。
+
+---
+
+## 10. CRC 变体：其实只有一个多项式
+
+`.rodata` 有 4 处命中 CRC32 表签名，但**多项式统一为 `0xEDB88320`（标准 zlib CRC-32）**，区别只是存储形态与用途：
+
+| 名称 | 表起始 | 宽度 | 类型 | 用途 |
+|---|---|---|---|---|
+| **T3** | `0xe2158` | u32 | 经典 `crc_table[256]`（`t[128]=0xEDB88320`） | **反篡改自用** |
+| **T0** | `0xdc1c0` | u64 | zlib **braid** 表（值零扩展到 64 位） | 静态 zlib #1（解压） |
+| **T1** | `0xdfeb8` | u64 | 同上 | 静态 zlib #2 |
+| **T2** | `0xe1958` | u64 | 同上 | 静态 zlib #3 |
+
+- T0/T1/T2 旁边紧跟的代码是 zlib `fixedtables()`（写回固定 Huffman 表 `lenfix=0xdc9c0`/`distfix=0xdd9c0`、`lenbits=9/distbits=5`）→ 确定是**解压**（解 MRPCS 下发 zip、tpup、so/dex 更新），非校验。
+- 反篡改 CRC（T3）有 3 个入口变体，共享表 getter `0x489204`：
+  - `crc32(buf,len)` **`0x489210`**：init `0xFFFFFFFF`，`crc=table[(crc^b)&0xff]^(crc>>8)`，末尾 `~`。
+  - `crc32_cont(buf,len,seed)` **`0x48924c`**：无 init/无收尾，续算。
+  - `crc32_file(path,*out,limit,k)` **`0x489288`**：`fopen("rb")` + 4KB 分块续算 + 末尾 `~`。核心 `0x489210` 被 200+ 处调用。
+- 全库**无第二种 CRC 多项式，无 CRC-16**；证书/签名另用 **MD5 + SHA-256**。
+
+---
+
+## 11. JNI / Java 层交互
+
+`JNI_OnLoad @ 0x1d62c4`；`.init_array` 64 个构造函数在加载时布置初始化/反调试。Java 侧类（解密自 native）：
+- `com/tencent/tp/TssJavaMethod`、`com/tencent/tp/MainThreadDispatcher2`
+- `com/tencent/tp/TouchListenerProxy`（触摸事件监控，反自动点击/宏）
+- `com/tencent/gcloud/plugin/PluginUtils`
+- 反射用：`android/app/ActivityThread`、`currentActivityThread`、`getClassLoader`、`dalvik.system.PathClassLoader`、`java/security/Signature`、`[Landroid/content/pm/Signature;`。
+
+---
+
+## 12. 关键地址速查
+
+| 地址 | 作用 |
+|---|---|
+| `0x4e4a30` / `0x4e4a44` | 字符串解密公共子函数（取 DATA 基址 / 取输出缓冲） |
+| `0x568fc4` | 解密输出缓冲(.bss) |
+| `0xfbbb0` | 加密字符串数据池 DATA |
+| `0x4e6390` | 中央日志函数 → `__android_log_print(_,"ACE","%s",_)` |
+| `0x50eaf0` | `__android_log_print` PLT 桩 |
+| `0x489204/0x489210/0x48924c/0x489288` | 反篡改 CRC 表getter/一次性/续算/文件 |
+| `0xe2158` | 反篡改 CRC32 表（poly 0xEDB88320） |
+| `0xdc1c0 / 0xdfeb8 / 0xe1958` | 3 份 zlib braid CRC 表（解压用） |
+| `0x4cbd7c` | 组装 `cert_md5|apk_hash_1|apk_hash_2|txt_seg_crc` 上报 |
+| `0x2db758` | APK 哈希 getter |
+| `0x1d62c4` | `JNI_OnLoad` |
+| 结构体 `+0x84` | 代码段自校验值 `txt_seg_crc` |
+
+---
+
+## 13. 观测/取证用 Hook 点（仅供分析，不用于对抗检测）
+
+- **拿全部明文**：hook 解密子函数 `0x4e4a30`/`0x4e4a44` 返回处或读 `0x568fc4`。
+- **拿全部日志**：hook 中央日志 `0x4e6390` 的 `msg` 入参。
+- **抓上报明文**：hook `TssSDKGetReportData*`（`0x1ce214`/`0x1d01ac`）、`TssSDKOnRecvData 0x1cec70`、`TssSDKOnRecvSignature 0x1d101c`。
+- **总入口**：`JNI_OnLoad 0x1d62c4`、`TssSDKInit 0x1cc398`。
+
+> 注：本库自身具备反 hook / 反调试 / 代码段 CRC 自校验，上述仅用于在**自有离线环境**做行为分析/取证；不提供任何绕过或致盲其检测的方法。
+
+---
+
+## 14. 一句话总结
+
+`libtersafe.so` = 腾讯 ACE/TP 7.7 反外挂 SDK（本包用于三角洲行动）：内置 mini-VM 跑云端下发的扫描脚本，配套 inline-hook、反调试/反 Frida/反 Root/反模拟器/反云手机/反多开；敏感字符串用“每串独立 stub + 变常量 XOR 流”加密（已解密 2085 条）；**MRPCS** 模块完成“云端规则下载→VM 扫描→加密上报”闭环，服务器为 `*.anticheatexpert.com`（下载 `down.`、频道 `*.cschannel.`、`acekeeper.`）+ 十余个 IP 兜底；防篡改由代码段 CRC 自校验 + APK/文件 CRC(zlib CRC-32) + 证书 MD5/SHA-256 组成，全部上报服务端核验。
+
+---
+
+## 15. 专题深挖：`sub_42AD54` —— MRPCS 数据包解析/分发（逐指令佐证）
+
+调用链：由 **`0x42a700`** 调用（MRPCS 处理线程）。原型 `handle_mrpcs_data(ctx v36, buf a2, len a3, flag a4)`。
+
+**(1) 前置校验** `sub_4297D8(ctx,flag)`，失败(&1)直接返回。
+
+**(2) 建流 + 读魔数**：`sub_3F88BC/3F8AF8` 在 `a2` 上建读取器；读首 dword `v42`。
+`0x67324752 = 0x04034B50 = "PK\x03\x04"`（ZIP 本地文件头）。是 ZIP 走 zip 分支；否则 `v44=1`。
+
+**(3) 解压** `sub_42A338`：内部反混淆出标签串
+`0x99132: "mvbqhujh{k6|yly" ⊕ 0x18 = "unzipmrpcs.data"`，
+再调 zlib（`0x3d555c` init / `0x3d5598` inflate / `0x3d5778` end）**解压 `mrpcs.data`**，得明文 `v43`(长 `v52`)。
+
+**(4) 包头魔数校验（双重 key）**：
+`key = buf[1] + buf[3]`；`sig[i] = buf[4+i] ⊕ key`（i=0..5）；与 `(len&0xff) ⊕ {0x56,0x4D,0x52,0x50,0x43,0x53}` 比对，
+即 ASCII **`"VMRPCS"`**（V M R P C S）。不符则进入解析分支。
+
+**(5) 解析** `sub_3A2D38(state, v43, v52)`（逐指令确认）：
+```
+magic  = *(u32*)buf        // [0..3] 期望校验值
+k1     = buf[0]            // key1
+k2     = buf[1]            // key2
+payload= buf+4 ; plen=len-4
+for i in payload: payload[i] = (payload[i] ⊕ k1) + k2     // 0x3a2de8..0x3a2dfc
+chk = sub_2e6188(payload, plen)                            // 计算校验
+if chk == magic:  用工厂 0x41a0a4 建容器对象, 虚调 vtable+0x10 解析
+                  (按 plen 是否 >3 选两种容器：common / single)
+返回对象 v37；其首字节 v35 = 命令类型
+```
+
+**(6) 加锁分发**：全局锁 `unk_566818`（`0x364BDC`=lock/`0x364C14`=unlock），`unk_564988` 用 `0x419368`+`0x42B51C` 一次性初始化。`switch(v35)`：
+- **case 1（common data）**：`ctx[10]=2`；`sub_42BE5C(ctx, ctx[1660], 0, ctx+48/96/120/24/216)` 装载规则集；用迭代器 `0x3864F4/386528/38655C` 遍历扫描项列表，对每个非空项 `memset 256B` 后调 **`sub_3E06D0`**——其内部读
+  `0x911e6: "7hjw{7k}t~7uyhk" ⊕ 0x18 = "/proc/self/maps"`，即**按下发的扫描项扫描进程内存映射**；命中则 `sub_434F3C` 派发/上报。末尾 `ctx[15]` 置位则 `sub_37DA04(_,5)` 通知。
+- **case 4（single data）**：`ctx[14]=2`；`sub_42BE5C(ctx, ctx[1656], 1, ctx+336/384/408/312/240)` 装载“单条”规则集；通知。
+- **case 3**：`ctx[12]=2`，确认/空分支 + 通知。
+
+**(7) 收尾**：释放 `v37`、`v43`，关闭读取器 `sub_3F88E8`。
+
+**结论**：`sub_42AD54` 是 MRPCS **“收到云端下发包 → 解压 `mrpcs.data` → 验 `VMRPCS` 魔数 → 逐项 `(⊕k1)+k2` 反混淆并校验 → 按命令号把 common/single 规则集装载进上下文、把扫描项投递给内存扫描器(读 `/proc/self/maps`)执行、命中上报并唤醒线程”** 的核心分发器。对应日志 `mrpcs_common_data_not_match`/`mrpcs_single_data_not_match`/`mrpcs_data_crc_error` 正是本函数第(4)(5)步的校验失败点。
+
+关键地址：`0x42AD54`(本函数)、`0x42A700`(调用者)、`0x42A338`(解压 mrpcs.data)、`0x3A2D38`((⊕k1)+k2 解析+校验)、`0x2E6188`(校验和)、`0x3E06D0`(读 /proc/self/maps 内存扫描)、`0x42BE5C`(装载规则集)、`0x434F3C`(命中派发)、`0x37DA04`(线程通知)、锁 `unk_566818`。
+
+---
+
+## 16. 专题深挖：VMRPCS 包格式 & 云端扫描规则执行（逐指令佐证）
+
+“VMRPCS” 是 MRPCS 云端下发包的**格式魔数**。整条链路：`sub_42A700`(下载线程) → `sub_42AD54`(分发) → `sub_42A338`(解压) / `sub_3A2D38`(解析) → `sub_42BE5C`(装载规则) → `sub_3E06D0`(内存扫描)。
+
+### 16.1 包结构（解压后的明文，字段偏移逐指令确认）
+下载得到的 `mrpcs.data`：
+- 若以 `PK\x03\x04`（`0x04034B50`，`sub_42A700 @0x42a764` 用 `movk #0x403,lsl16 | #0x4b50` 拼出）开头 → 是 **ZIP** 容器；
+- 否则为 **zlib 压缩流**，`sub_42A338` 解压（标签串 `"unzipmrpcs.data"`）。
+
+解压后明文 `P`（长 `N`）布局：
+```
++0x00  u32  chk        // 期望校验值（与 payload 校验和比对）
++0x00  u8   k1 = P[0]  // 复用为异或 key1
++0x01  u8   k2 = P[1]  // 加法 key2 / 也参与签名 key
++0x03  u8   P[3]       // 与 P[1] 相加 => 签名解扰 key
++0x04  [6]  VMRPCS 签名（双重加扰）:
+            P[4+i] ⊕ (P[1]+P[3])  ==  ("VMRPCS"[i]) ⊕ (N & 0xff)
+            "VMRPCS" = {0x56,0x4D,0x52,0x50,0x43,0x53}
++0x04..     payload：整体 (⊕k1)+k2 反混淆 —— P[i]=(P[i]⊕k1)+k2  (sub_3A2D38 @0x3a2de8)
+            checksum(payload)（sub_2e6188）必须 == chk，否则丢弃(=> mrpcs_*_not_match / data_crc_error)
+第一条记录首字节 = 命令类型 v35
+```
+容器由工厂 `0x41a0a4`(单例) + `0x4191c0`(ctor，size 标记 `0xfa`=250) 构造，虚方法 `vtable+0x10` 完成注册/解析。
+
+### 16.2 命令类型（`switch(v35)`，sub_42AD54）
+| type | 语义 | 动作 |
+|---|---|---|
+| **1** | **common data**（公共规则集） | `ctx[10]=2`；`sub_42BE5C(...,ctx+48/96/120/24/216)` 装载；遍历扫描项列表逐个 `sub_3E06D0` 执行；命中 `sub_434F3C` 上报 |
+| **3** | ack/空 | `ctx[12]=2`，仅置状态 + 通知 |
+| **4** | **single data**（单条规则集） | `ctx[14]=2`；`sub_42BE5C(...,ctx+336/384/408/312/240)` 装载单条规则 |
+
+### 16.3 规则装载 `sub_42BE5C`（逐指令）
+- 入参 `(ctx, mode w1, is_single w2, vec3, vec5, vec6, vec7…)`。
+- `mode==1`：用 `0x3646c0` 从 3 个来源向量拷入；否则用 `0x39f710`（3 次）。
+- 按 `is_single` 选目标偏移：single → 上下文 `+0x108`，common → `+0xc0`（各是一个规则容器），再 `0x42d28c` 装配；`0x429aa4` 校验失败则 `0x37da04(_,1)` 通知。
+- 即：把解出的规则集分别落到 ctx 的 common(`+0xc0`) / single(`+0x108`) 两个槽位。
+
+### 16.4 扫描执行体 `sub_3E06D0`（VMRPCS 的“真正干活”部分，逐指令）
+这是**内存扫描器**，按规则项扫自身进程内存：
+1. 反混淆出路径 `0x911e6: "…" ⊕ 0x18 = "/proc/self/maps"`，`fopen`（`0x50eac0/0x50ea90`）打开。
+2. 反混淆出权限过滤串：
+   - `0x3e0800 strh 0x6a` → `'r'`
+   - `0x3e0834 w=0x6860356a ⊕0x18 = "r-xp"`（可执行段）
+   - `0x3e084c w=0x6835356a ⊕0x18 = "r--p"`（只读段）
+3. `0x37d514` 逐行读 maps → `0x37d3fc` 解析出每个 region 的 `[start,end,perm]`，筛选 `r-xp`/`r--p`。
+4. 对命中权限的内存区，按传入的扫描描述符（`x1`）做**特征/CRC 扫描**（对应 §4 的 MVM `wild scan`/`ScanCast`、以及 §9 的 `.text` 段 CRC 自校验）。命中回填结果结构 `ctx[+0x140/+0x148]`，交由上层 `sub_434F3C` 上报。
+
+### 16.5 结论
+**VMRPCS = TP 云端反外挂规则的私有封装格式**：zlib 压缩 + `VMRPCS` 魔数（长度加扰）+ payload `(⊕k1)+k2` 混淆 + 校验和。解出后按命令号（1 common / 4 single）把规则装进上下文的两个槽位，再由 `/proc/self/maps` 内存扫描器对 `r-xp`(代码)/`r--p`(只读) 段执行特征扫描并上报。它就是“云端下发→本地 VM 内存扫描→加密上报”闭环里**下发数据的载体格式**，热更外挂特征、防中间人（魔数+校验和+CRC）。
+
+关键地址：`0x42A700`(下载/分发入口)、`0x42AD54`(格式判定+switch)、`0x42A338`(zlib 解压)、`0x3A2D38`(`(⊕k1)+k2`+校验)、`0x2E6188`(校验和)、`0x41A0A4/0x4191C0/0x419518`(容器工厂/ctor)、`0x42BE5C`(规则装载 common+0xc0/single+0x108)、`0x3E06D0`(/proc/self/maps + r-xp/r--p 内存扫描)、`0x434F3C`(命中上报)。
+
+---
+
+## 17. 专题深挖：`sub_42A5D8` —— MRPCS 顶层接收器（VMRPCS 完整分支，逐指令佐证）
+
+`sub_42AD54`（第 15/16 节）只是**其中一条解析分支**。真正的顶层入口是 `sub_42A5D8(ctx a1, buf a2, len a3, flag a4)`，它把“收到一包数据”后的所有情况都串了起来。逐段修正/补全如下。
+
+### 17.1 入口：CRC + 去重缓存
+```c
+a1[405] = 1;                       // 状态字段 ctx+0x654 置 1 = “正在接收/校验”
+sub_2E5F08(v30);                   // crc32lei 上下文一次性初始化(全局锁 0x5637f0 / 标志 0x563818)
+v13 = crc32lei(v30, a2, a3);       // 对【原始入包】算标准 CRC32  → v13
+if (!(a4&1)) {                     // 非强制路径
+    if (sub_3F63F4(cache, a2, a3, v13) & 1) {  // 去重缓存命中(同 CRC 已处理过)
+        sub_3F6104(cache, a2, a3);              // 刷新缓存
+        return 0;                               // 直接丢弃，不重复处理
+    }
+}
+```
+- **`crc32lei` = 标准 zlib CRC32**（就是第 10/11 节那张 `0xe2158` 表、poly `0xEDB88320`）。`v13` 是这包数据的指纹，全程往下传。
+- `sub_3F63F4/sub_3F6104` 是一套**按 CRC 去重的缓存**（`sub_3F5280` 取单例），避免同一份下发包被反复解析/扫描。这正解释了日志里 `mrpcs_data_crc_error` 的来源——CRC 既做完整性又做去重键。
+
+### 17.2 两个前置分派
+```c
+if (sub_429AA4(a1) & 1)            // 若上下文已就绪
+    sub_42AD54(a1, a2, a3, v13);   // 调第 15/16 节那个解析器(带 CRC)
+lock(unk_566818);
+if (sub_429714(a1, v13) & 1)       // 该 CRC 已是“当前生效”的下发 → 早退
+    { unlock; return v22; }
+```
+即 `sub_42AD54` 是被 `sub_42A5D8` **有条件调用**的子例程，不是独立入口。
+
+### 17.3 三分支主体（关键修正）
+之前第 16 节把 `switch(1/3/4)` 与 `VMRPCS` 魔数写在了一起，实际是**互斥的三类**：
+
+```c
+if (*a2 == 0x04034B50) {           // (A) ZIP: 先 zlib 解压
+    v21=1; v20 = sub_42A338(a1, a2, &v29);
+    if (!v20 || !v29) {            // 解压失败 → 建错误对象(工厂 0x41A0A4, ctor 0x4191C0/419518)
+        sub_4191C0(v28,250); sub_419518(v28,v13);
+        (*(*factory+16))(factory,v28);   // 虚调 vtable+0x10 上报“坏包”
+        a1[405] = -1; return -1;
+    }
+    a1[405] = 2;                   // 状态 2 = 已解压
+}
+
+// 重建 6 字节签名: key = buf[1]+buf[3]; sig[i] = buf[4+i] ^ key   (需 len>=0xB)
+if (*v20) {
+    if (sig 全部 == (len&0xff) ^ {56 4D 52 50 43 53}) {   // (B) 命中 "VMRPCS" 魔数
+        unlock;
+        a1[405] = 4;               // 状态 4 = VMRPCS 专包
+        sub_42A0E8(a1, v20, v29);  // → 专用异步处理器(见 17.4)
+        return 0;
+    }
+    // (C) 非 VMRPCS：常规解析 + 命令分派
+    once_init(unk_564988);
+    sub_3A2D18(v27);
+    v15 = sub_3A2D38(v27, v20, v29);   // (⊕k1)+k2 反混淆 + 校验和(第16节)
+    if (v15) {
+        a1[403]=0; a1[404]=0;
+        lock(...+12);
+        switch (*v15) {            // 命令类型来自【解析后对象首字节】，不是魔数
+            case 1: v22 = sub_42B570(a1, v15); break;   // common 规则集
+            case 3: v22 = sub_42B87C(a1, v15); break;   // ack/心跳
+            case 4: v22 = sub_42BAD0(a1, v15); break;   // single 规则集
+        }
+        a1[405] = 3;               // 状态 3 = 处理完成
+    }
+}
+else {                             // (D) 首字节为 0 = 空/复位包
+    sub_3F878C(v20,v29);
+    sub_429D4C(a1); sub_429E94(a1); sub_429FDC(a1);  // 清空 3 个规则容器(复位)
+    sub_42A174(a1);
+    a1[405] = 3;
+}
+```
+
+**要点修正**：
+- `VMRPCS` 魔数 = **一类专包**，走 `sub_42A0E8`（异步任务）；命令类型 `1/3/4` 是**另一类（非 VMRPCS）包**解析后的 `*v15`。两者互斥。
+- `a1[405]`（ctx+0x654）是**状态机字段**：`1`=接收/校验中，`2`=已解压，`4`=VMRPCS 专包，`3`=完成，`-1`=坏包。
+- 首字节为 0 的空包会**复位全部规则容器**（`sub_429D4C/E94/FDC` 分别清 `0x564bc8` 等全局单例），是“下发清空/失效”指令。
+
+### 17.4 VMRPCS 专包处理器 `sub_42A0E8` → 异步任务
+```c
+sub_42A0E8(ctx, buf, len):
+    if (!global_0x566850) global_0x566850 = sub_433a5c();     // 单例
+    if (!ctx[0x658]) ctx[0x658] = sub_2eb80c(buf, len);       // 首次投递
+    else             sub_2eb80c(buf, len);
+```
+`sub_2eb80c(buf,len)` → `sub_2f2478()` + `sub_2f2508(this,buf,len)`：构造一个**状态机任务对象**（`0x2eb8bc` ctor：`state=7`、分配 `0x128` 字节、`sub_2eb9f8` 初始化；`0x2eb958` 是带跳转表 `0x53aa50` 的 `step()`，状态 `1/3/8` 流转，`vtable+0x10 / +0x28` 驱动）。即 VMRPCS 专包不是同步解析，而是**丢进一个异步任务队列/状态机**逐步执行，与常规 `1/3/4` 同步分派区分开。
+
+### 17.5 三个命令处理器差异（`sub_42B570/87C/AD0`）
+三者结构相同（`0x42ca8c` 建迭代器 → `0x42cab0` 载入 → `0x42cc7c/ccb0/cce4` 遍历），差异在数据集来源与校验：
+- **case 1 `sub_42B570`（common）**：先 `sub_42c7e4` 前置校验（失败返回 -1），`sub_42cab0(...,mode=1)` 载入，逐条 `sub_42cd20` 装配到 common 容器。
+- **case 4 `sub_42BAD0`（single）**：先读包内标志 `buf[4]` 与内层对象 `[obj+8]` 的 bit0，经 `sub_42da14` 计算模式，再 `sub_42cab0(...,mode=1)` 载入到 single 容器。
+- **case 3 `sub_42B87C`（ack/心跳）**：`sub_42d3a0`→`sub_42d530` 载入，遍历后读 `[obj+0x11]` 标志，多为确认/状态回写，不投扫描。
+
+### 17.6 完整数据流（修正版）
+```
+sub_42A700 (下载线程)
+  └─ sub_42A5D8(ctx,buf,len,flag)          顶层接收器
+       ├─ crc32lei → v13                    标准 CRC32 指纹
+       ├─ sub_3F63F4 去重缓存               同 CRC 已处理 → 丢弃
+       ├─ [ZIP] sub_42A338                  zlib 解压 mrpcs.data，失败→坏包上报
+       ├─ 重建签名 == "VMRPCS"^(len&0xff)?
+       │    ├─ 是 → sub_42A0E8 → sub_2eb80c → sub_2f2508   VMRPCS 异步任务
+       │    └─ 否 → sub_3A2D38 [(⊕k1)+k2 + 校验和]
+       │             switch(*v15): 1→42B570(common) 3→42B87C(ack) 4→42BAD0(single)
+       └─ [空包] sub_429D4C/E94/FDC          复位全部规则容器
+                    ↓ (common/single 规则装入后)
+       sub_42BE5C → sub_3E06D0(/proc/self/maps, r-xp/r--p) → sub_434F3C(命中上报)
+```
+
+**状态字段 `ctx+0x654`(a1[405])**：`1`接收→`2`解压→(`4`VMRPCS专包 | `3`完成 | `-1`坏包)。
+
+---
+
+## 附录 A：随附文件
+- `FULL_REPORT.md`（本文，合订本）
+- `tersafe_analysis.md`（原始分析）
+- `tersafe_logs.txt`（754 行日志/诊断串）
+- `anti_tamper_crc.md`（防篡改专题）
+- `crc_variants.md`（CRC 变体专题）
+- `vmrpcs_deep.md`（VMRPCS 深挖独立专题：顶层接收器/异步任务/命令处理器/内存扫描器）
+- `mrpcs_distribution.md`（MRPCS 下发机制专题：主机/CDN 选择/URL 模板/native socket+Java 下载/OnRecvData 入口/接收器与分发器全分支）
+- `report_api_deep.md`（上报接口 GetReportData v1/v2/v3/v4 深挖：两层转发/ioctl 命令号/版本差异/混淆）
+- `hook_detection.md`（hook 检测专题：elf_hook_scan/opcode_scan/ts2_got/代码段自校验/扫描项注册表/云端 feature 下发）
+- `decrypted.txt`（2085 条解密串，带 callsite/stub/id）
+- `decrypted_strings_sorted.txt`（2059 条去重排序）
